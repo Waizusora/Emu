@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android debug APK
+    name: Build Android debug APK and JNI layer
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,9 +22,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android NDK and CMake
+        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Build debug APK
+      - name: Build debug APK with native JNI libraries
         run: gradle :app:assembleDebug
