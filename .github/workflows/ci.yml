@@ -38,10 +38,10 @@ jobs:
 
       - name: Install Android SDK, NDK, and CMake packages
         run: |
-          sdkmanager --install \\
-            "platforms;android-35" \\
-            "build-tools;35.0.0" \\
-            "ndk;27.2.12479018" \\
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
       - name: Set up Gradle
@@ -95,16 +95,16 @@ jobs:
         run: |
           # Install host-side tools required by CMake, Autoconf, and Meson.
           sudo apt-get update
-          sudo apt-get install --yes \\
-            build-essential \\
-            cmake \\
-            curl \\
-            git \\
-            meson \\
-            ninja-build \\
-            pkg-config \\
-            python3 \\
-            python3-pip \\
+          sudo apt-get install --yes \
+            build-essential \
+            cmake \
+            curl \
+            git \
+            meson \
+            ninja-build \
+            pkg-config \
+            python3 \
+            python3-pip \
             tar
 
       - name: Set up Android SDK
