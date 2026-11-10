@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the currently supported third-party Android dependency stages.
-# GLib and Pixman are separate future stages; this script reports that limit.
+# Build and verify the pinned Android dependency stack for one host ABI.
+# A successful run requires every target archive and pkg-config module.
 
 set -euo pipefail
 
@@ -24,16 +24,9 @@ bash "$ROOT/native/scripts/create-android-meson-cross-file.sh" "$ABI"
 bash "$ROOT/native/scripts/build-glib-android.sh" "$ABI"
 bash "$ROOT/native/scripts/build-pixman-android.sh" "$ABI"
 
-# Verify all QEMU's required target pkg-config modules before declaring success.
-export QEMU_PKG_CONFIG_LIBDIR="$QEMU_ANDROID_SYSROOT/usr/lib/pkgconfig:$QEMU_ANDROID_SYSROOT/usr/share/pkgconfig"
-export PKG_CONFIG_SYSROOT_DIR="$QEMU_ANDROID_SYSROOT"
-export PKG_CONFIG_LIBDIR="$QEMU_PKG_CONFIG_LIBDIR"
-for module in glib-2.0 pixman-1; do
-  pkg-config --exists "$module" || {
-    echo "ERROR: required QEMU target module '$module' is missing" >&2
-    exit 1
-  }
-done
+# Verify all expected static archives and target pkg-config modules before success.
+bash "$ROOT/native/scripts/verify-android-sysroot.sh" "$ABI"
 
+export QEMU_PKG_CONFIG_LIBDIR="$QEMU_ANDROID_SYSROOT/usr/lib/pkgconfig:$QEMU_ANDROID_SYSROOT/usr/share/pkgconfig"
 echo "Completed dependency builds for $ABI."
 echo "QEMU_PKG_CONFIG_LIBDIR=$QEMU_PKG_CONFIG_LIBDIR"
