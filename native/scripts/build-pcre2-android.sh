@@ -69,8 +69,9 @@ cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" -G Ninja \
   -DPCRE2_BUILD_PCRE2_16=OFF \
   -DPCRE2_BUILD_PCRE2_32=OFF \
   -DPCRE2_SUPPORT_JIT=OFF \
+  -DPCRE2_STATIC_PIC=ON \
   -DPCRE2_BUILD_PCRE2GREP=OFF \
-  -DPCRE2_BUILD_TESTS=OFF
+  -DBUILD_TESTING=OFF
 
 # Install the target library and development metadata into the ABI prefix.
 cmake --build "$BUILD_DIR" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
