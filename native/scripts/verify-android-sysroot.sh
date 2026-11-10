@@ -34,18 +34,18 @@ export PKG_CONFIG_SYSROOT_DIR="$PREFIX"
 export PKG_CONFIG_LIBDIR="$PKG_CONFIG_DIRS"
 export PKG_CONFIG_ALLOW_CROSS=1
 
-# Verify the metadata required by the dependency build and QEMU configure.
+# Verify target metadata. pkg-config may report either the logical /usr prefix
+# or its sysroot-expanded physical path, depending on the .pc file generator.
 for module in zlib libffi libpcre2-8 glib-2.0 gobject-2.0 gio-2.0 pixman-1; do
   pkg-config --exists "$module" || {
     echo "ERROR: missing target pkg-config module: $module" >&2
     exit 1
   }
-  # Ensure every module resolves to the selected sysroot, not a host prefix.
   module_prefix="$(pkg-config --variable=prefix "$module")"
   case "$module_prefix" in
-    /usr) ;;
+    /usr|"$PREFIX/usr") ;;
     *)
-      echo "ERROR: $module has a non-relocatable prefix: $module_prefix" >&2
+      echo "ERROR: $module resolves outside the relocatable sysroot: $module_prefix" >&2
       exit 1
       ;;
   esac
