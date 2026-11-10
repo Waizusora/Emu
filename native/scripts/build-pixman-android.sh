@@ -62,7 +62,7 @@ export PKG_CONFIG_LIBDIR="$PREFIX/usr/lib/pkgconfig:$PREFIX/usr/share/pkgconfig"
 rm -rf "$BUILD_DIR"
 meson setup "$BUILD_DIR" "$SOURCE_DIR" \
   --cross-file "$CROSS_FILE" \
-  --prefix "$PREFIX/usr" \
+  --prefix /usr \
   --libdir lib \
   --buildtype release \
   --wrap-mode nofallback \
@@ -75,7 +75,7 @@ meson setup "$BUILD_DIR" "$SOURCE_DIR" \
 
 # Install the static Pixman archive and its pixman-1 pkg-config module.
 ninja -C "$BUILD_DIR" -j "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-ninja -C "$BUILD_DIR" install
+DESTDIR="$PREFIX" ninja -C "$BUILD_DIR" install
 
 PKG_CONFIG_SYSROOT_DIR="$PREFIX" \
 PKG_CONFIG_LIBDIR="$PREFIX/usr/lib/pkgconfig:$PREFIX/usr/share/pkgconfig" \
