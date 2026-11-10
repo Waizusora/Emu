@@ -206,6 +206,11 @@ jobs:
           QEMU_TOOL_WRAPPER_ROOT: ${{ github.workspace }}/.work/toolchain
         run: bash native/scripts/build-qemu-android.sh "${{ matrix.abi }}"
 
+      - name: Inspect Android QEMU ELF dependencies
+        env:
+          QEMU_BUILD_ROOT: ${{ github.workspace }}/.work/qemu-build
+        run: bash native/scripts/inspect-qemu-android-elf.sh "${{ matrix.abi }}"
+
       - name: Upload QEMU Android binaries
         uses: actions/upload-artifact@v4
         with:
