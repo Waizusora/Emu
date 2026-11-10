@@ -12,3 +12,13 @@ local.properties
 
 # Native QEMU source and build outputs
 .work/
+
+# Android signing credentials and private keystore material (never commit these).
+*.jks
+*.keystore
+*.keystores
+*.p12
+*.pfx
+key.properties
+keystore.properties
+signing.properties
