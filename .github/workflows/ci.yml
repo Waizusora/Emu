@@ -34,6 +34,9 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
+          # Compare pushes with the event's actual previous commit; comparing against
+          # the last failed run can otherwise hide the same native changes on a retry.
+          base: ${{ github.event.before }}
           # Changes to the native scripts or this workflow can affect sysroot builds.
           filters: |
             native:
