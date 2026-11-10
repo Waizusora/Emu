@@ -72,6 +72,20 @@ succeeds. It checks that GLib and Pixman are available through the supplied
 target pkg-config path, and stops with an actionable error if prerequisites
 are missing.
 
+## Android CI checks
+
+The GitHub Actions workflow installs Android platform 35, build-tools 35.0.0,
+NDK 27.2.12479018, and CMake 3.22.1 before compiling the APK. It parses each
+shell script independently, builds the debug APK, and verifies that the JNI
+bridge is packaged for both supported ABIs:
+
+```sh
+bash native/scripts/verify-android-apk.sh app/build/outputs/apk/debug/app-debug.apk
+```
+
+The verifier checks only that `libemu-qemu.so` is present in each APK ABI
+folder. It does not imply that the QEMU engine itself is included or runnable.
+
 **Important:** this is an experimental cross-build path, not a verified
 Android port. A successful configure or link is not proof that the binaries
 load on API 28+, have all runtime dependencies packaged, or boot a guest.
