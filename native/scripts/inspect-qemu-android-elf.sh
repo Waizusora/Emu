@@ -25,6 +25,11 @@ case "$ABI" in
 esac
 
 READELF="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+PATCHELF="$(command -v patchelf || true)"
+[[ -n "$PATCHELF" ]] || {
+  echo "ERROR: patchelf is required to remove Meson build-tree RUNPATH entries" >&2
+  exit 2
+}
 [[ -x "$READELF" ]] || {
   echo "ERROR: Android NDK llvm-readelf not found: $READELF" >&2
   exit 2
@@ -50,6 +55,11 @@ for name in qemu-system-aarch64 qemu-img; do
     echo "ERROR: unexpected ELF interpreter for $name: '${interpreter:-missing}'" >&2
     exit 1
   fi
+
+  # Meson embeds the temporary sysroot path in build-tree executables so
+  # they can run on the CI host. Remove that build-only path before upload.
+  # patchelf edits only ELF dynamic metadata; it does not change machine code.
+  "$PATCHELF" --remove-rpath "$binary"
 
   dynamic="$("$READELF" --dynamic --wide "$binary")"
   if grep -Eq '\((RPATH|RUNPATH)\)' <<< "$dynamic"; then
