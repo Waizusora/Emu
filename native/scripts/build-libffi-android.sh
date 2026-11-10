@@ -81,7 +81,6 @@ cd "$BUILD_DIR"
 CC="$CC" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" \
 CFLAGS="-O2 -fPIC" \
 "$SOURCE_DIR/configure" \
-  --build="$(./config.guess 2>/dev/null || gcc -dumpmachine)" \
   --host="$TRIPLE" \
   --prefix="$PREFIX/usr" \
   --disable-shared \
