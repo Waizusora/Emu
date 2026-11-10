@@ -367,28 +367,6 @@ private fun SettingsScreen(
             }
         }
         item {
-            Card(shape = RoundedCornerShape(20.dp)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Phantom process (ADB)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Android may limit child processes started by an app. This can affect QEMU helper processes. The following ADB commands are an advanced, device-wide workaround; support varies by Android version and vendor.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text("Disable phantom-process monitoring (if supported):", fontWeight = FontWeight.SemiBold)
-                    Text("adb shell settings put global settings_enable_monitor_phantom_procs 0", style = MaterialTheme.typography.bodySmall)
-                    Text("Raise the phantom-process limit:", fontWeight = FontWeight.SemiBold)
-                    Text("adb shell device_config set_sync_disabled_for_tests persistent\nadb shell device_config put activity_manager max_phantom_processes 2147483647", style = MaterialTheme.typography.bodySmall)
-                    Text("Restore defaults:", fontWeight = FontWeight.SemiBold)
-                    Text("adb shell settings delete global settings_enable_monitor_phantom_procs\nadb shell device_config delete activity_manager max_phantom_processes\nadb shell device_config set_sync_disabled_for_tests none", style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        "Commands may be ignored or reset by the manufacturer. They change device-wide process policy, may increase battery and memory use, and are not required on every device.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-        item {
             Text(notice, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
         }
