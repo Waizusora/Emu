@@ -70,15 +70,15 @@ cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" -G Ninja \
   -DANDROID_PLATFORM="android-$API" \
   -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$PREFIX/usr" \
+  -DCMAKE_INSTALL_PREFIX=/usr \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DBUILD_SHARED_LIBS=OFF \
   -DZLIB_BUILD_EXAMPLES=OFF
 
-# Install headers, static archive, and pkg-config metadata into this ABI prefix.
+# Install into DESTDIR so pkg-config files retain the relocatable /usr prefix.
 cmake --build "$BUILD_DIR" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-cmake --install "$BUILD_DIR"
+DESTDIR="$PREFIX" cmake --install "$BUILD_DIR"
 
 # Fail if the expected static archive was not installed.
 [[ -f "$PREFIX/usr/lib/libz.a" ]] || {
