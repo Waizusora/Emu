@@ -10,27 +10,63 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    name: Build Android debug APK and JNI layer
+    name: Build Android debug APK and verify JNI ABIs
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android NDK and CMake
-        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Install Android SDK, NDK, and CMake packages
+        run: |
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Validate native build scripts
-        run: bash -n native/scripts/fetch-qemu.sh native/scripts/build-qemu-android.sh
-      - name: Build debug APK with native JNI libraries
-        run: gradle :app:assembleDebug
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Validate shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Parse every script independently; bash -n with multiple script
+          # arguments only parses the first file.
+          while IFS= read -r -d '' script; do
+            echo "Checking ${script}"
+            bash -n "${script}"
+          done < <(find native/scripts -maxdepth 1 -type f -name '*.sh' -print0)
+
+      - name: Build debug APK for configured Android ABIs
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK contains JNI libraries for both ABIs
+        run: bash native/scripts/verify-android-apk.sh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: emu-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
