@@ -40,7 +40,11 @@ jobs:
           # Changes to the native scripts or this workflow can affect sysroot builds.
           filters: |
             native:
-              - 'native/scripts/**'
+              # Any native source, pin, patch, build script, or native documentation
+              # change should exercise the complete ABI matrix rather than silently skip it.
+              - 'native/**'
+              # Keep JNI/CMake integration changes coupled to native build validation.
+              - 'app/src/main/cpp/**'
               - '.github/workflows/ci.yml'
 
   build:
