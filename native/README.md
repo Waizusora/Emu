@@ -87,6 +87,21 @@ This is intentionally only the native boundary. The current bridge returns
 or provide `qemu-img`. Do not change that result until a real QEMU engine is
 built, packaged, and exercised on-device.
 
+## Android compatibility patches
+
+Repository-maintained QEMU portability patches are stored in `native/patches/`
+and applied by `native/scripts/fetch-qemu.sh` immediately after the pinned
+upstream source and submodules are fetched. Patch files are checked with
+`git apply --check` before application, so an upstream source mismatch fails
+rather than silently applying a partial change.
+
+The initial patch addresses an Android Bionic header collision in QEMU's 9P
+marshal structure: Bionic defines `st_atime_nsec`, `st_mtime_nsec`, and
+`st_ctime_nsec` as macros, which otherwise rewrite the identically named 9P
+protocol fields and stop both Android ABI builds at compile time. Keep these
+changes isolated from upstream source and add a new versioned patch when a
+further Android-specific portability issue is identified.
+
 ## Fetch the pinned source
 
 Run the fetch script from the repository root:
