@@ -1,0 +1,27 @@
+From 9d31a2c5f8b1 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] backends: skip POSIX shm backend on Android
+
+Android's Bionic target does not expose the POSIX shm_open/shm_unlink API
+required by QEMU's hostmem-shm backend. The Android app uses ordinary
+file-backed virtual disks and does not require this optional host backend.
+Keep the backend enabled on other supported non-Windows hosts.
+
+---
+ backends/meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/backends/meson.build b/backends/meson.build
+index 0000000000..1111111111 100644
+--- a/backends/meson.build
++++ b/backends/meson.build
+@@ -10,7 +10,7 @@ system_ss.add([files(
+   'confidential-guest-support.c',
+ ), numa])
+ 
+-if host_os != 'windows'
++if host_os != 'windows' and host_os != 'android'
+   system_ss.add(files('rng-random.c'))
+   system_ss.add(files('hostmem-file.c'))
+   system_ss.add([files('hostmem-shm.c'), rt])
+--
+2.43.0
