@@ -150,6 +150,9 @@ INFO
   --extra-ldflags="-L$SYSROOT/usr/lib" \
   --enable-tcg \
   --disable-kvm \
+  --disable-vhost-user \
+  --disable-vhost-crypto \
+  --disable-vhost-user-blk-server \
   --disable-werror \
   --disable-docs \
   --disable-gtk \
