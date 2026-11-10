@@ -99,7 +99,7 @@ for name in qemu-system-aarch64 qemu-img; do
     exit 1
   fi
 
-  if grep -Eq '\\(TEXTREL\\)' <<< "$dynamic"; then
+  if grep -Eq '\(TEXTREL\)' <<< "$dynamic"; then
     echo "ERROR: $name contains DT_TEXTREL; text relocations are not accepted" >&2
     exit 1
   fi
