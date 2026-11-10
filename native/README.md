@@ -213,3 +213,20 @@ itself compiles or runs on Android. The QEMU cross-build still needs configure
 and link validation, runtime ELF inspection, packaging, and physical-device
 tests. The dependency pipeline is not run in hosted CI yet; CI currently
 checks shell syntax and the Android app/JNI packaging only.
+
+
+## Verify the Android dependency sysroot
+
+After the dependency orchestrator completes, it runs
+`native/scripts/verify-android-sysroot.sh`. The verifier checks that the
+selected ABI prefix contains the expected static archives and that zlib,
+libffi, PCRE2, GLib, and Pixman pkg-config modules resolve inside that prefix.
+It also checks static link metadata for GLib and Pixman. Run it independently
+with:
+
+```sh
+bash native/scripts/verify-android-sysroot.sh arm64-v8a
+```
+
+This is a structural sysroot check only. It does not establish that the
+libraries load on Android or that QEMU compiles or boots successfully.
