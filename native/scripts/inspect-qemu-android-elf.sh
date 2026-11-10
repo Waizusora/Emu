@@ -68,18 +68,51 @@ for name in qemu-system-aarch64 qemu-img; do
     exit 1
   fi
 
+  # QEMU may depend on Android's public system libraries, but it must not
+  # accidentally retain host or private-library dependencies.
+  needed_libraries="$(sed -n 's/.*Shared library: \\[\\([^]]*\\)\\].*/\\1/p' <<< "$dynamic")"
+  if [[ -z "$needed_libraries" ]]; then
+    echo "ERROR: $name has no DT_NEEDED entries; expected Android libc linkage" >&2
+    exit 1
+  fi
+  while IFS= read -r library; do
+    [[ -n "$library" ]] || continue
+    case "$library" in
+      libc.so|libm.so|libdl.so|libz.so)
+        ;;
+      *)
+        echo "ERROR: $name depends on non-approved Android/host library: $library" >&2
+        exit 1
+        ;;
+    esac
+  done <<< "$needed_libraries"
+  grep -qx 'libc.so' <<< "$needed_libraries" || {
+    echo "ERROR: $name does not declare libc.so" >&2
+    exit 1
+  }
+
+  # Reject GNU/glibc symbol-version requirements in Android executables.
+  versions="$("$READELF" --version-info "$binary")"
+  if grep -Eq 'GLIBC(_|XX_)|CXXABI_' <<< "$versions"; then
+    echo "ERROR: $name contains GNU/glibc symbol-version requirements" >&2
+    grep -E 'GLIBC(_|XX_)|CXXABI_' <<< "$versions" >&2
+    exit 1
+  fi
+
+  if grep -Eq '\\(TEXTREL\\)' <<< "$dynamic"; then
+    echo "ERROR: $name contains DT_TEXTREL; text relocations are not accepted" >&2
+    exit 1
+  fi
+
   echo "===== Android ELF inspection: $ABI / $name ====="
   echo "ELF machine: $machine"
   echo "ELF interpreter: $interpreter"
-  echo "DT_NEEDED shared libraries:"
-  needed="$(sed -n 's/.*(NEEDED).*Shared library: \([^]]*\)\].*/\1/p' <<< "$dynamic")"
-  if [[ -n "$needed" ]]; then
-    while IFS= read -r library; do
-      [[ -n "$library" ]] && echo "  - $library"
-    done <<< "$needed"
-  else
-    echo "  (none; statically linked executable)"
-  fi
+  echo "DT_NEEDED Android system libraries:"
+  while IFS= read -r library; do
+    [[ -n "$library" ]] && echo "  - $library"
+  done <<< "$needed_libraries"
+  echo "GNU/glibc symbol versions: absent"
+  echo "DT_TEXTREL: absent"
   echo "RPATH/RUNPATH: absent"
 done
 
