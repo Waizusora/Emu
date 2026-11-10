@@ -68,7 +68,10 @@ tar -xJf "$ARCHIVE_PATH" --strip-components=1 -C "$SOURCE_DIR"
   exit 1
 }
 
-# Restrict dependency lookup to the target sysroot and disable host-only features.
+# Restrict dependency lookup to the target sysroot.
+# GLib requires gettext support even when NLS catalogs are disabled.
+# Its bundled proxy-libintl Meson fallback supplies that API for Android,
+# where the NDK libc does not provide libintl.h or libintl.
 export PKG_CONFIG_SYSROOT_DIR="$PREFIX"
 export PKG_CONFIG_LIBDIR="$PREFIX/usr/lib/pkgconfig:$PREFIX/usr/share/pkgconfig"
 rm -rf "$BUILD_DIR"
@@ -77,7 +80,7 @@ meson setup "$BUILD_DIR" "$SOURCE_DIR" \
   --prefix /usr \
   --libdir lib \
   --buildtype release \
-  --wrap-mode nofallback \
+  --wrap-mode default \
   -Ddefault_library=static \
   -Dtests=false \
   -Dinstalled_tests=false \
