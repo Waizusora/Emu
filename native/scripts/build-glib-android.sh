@@ -74,7 +74,7 @@ export PKG_CONFIG_LIBDIR="$PREFIX/usr/lib/pkgconfig:$PREFIX/usr/share/pkgconfig"
 rm -rf "$BUILD_DIR"
 meson setup "$BUILD_DIR" "$SOURCE_DIR" \
   --cross-file "$CROSS_FILE" \
-  --prefix "$PREFIX/usr" \
+  --prefix /usr \
   --libdir lib \
   --buildtype release \
   --wrap-mode nofallback \
@@ -94,7 +94,7 @@ meson setup "$BUILD_DIR" "$SOURCE_DIR" \
 
 # Compile GLib and install its libraries, headers, and pkg-config files.
 ninja -C "$BUILD_DIR" -j "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-ninja -C "$BUILD_DIR" install
+DESTDIR="$PREFIX" ninja -C "$BUILD_DIR" install
 
 for module in glib-2.0 gobject-2.0 gio-2.0; do
   PKG_CONFIG_SYSROOT_DIR="$PREFIX" \
