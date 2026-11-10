@@ -12,4 +12,3 @@ local.properties
 
 # Native QEMU source and build outputs
 .work/
-native/qemu-source.lock
