@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Navy-to-blue gradient used behind the adaptive launcher foreground. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="135"
+        android:startColor="#071A49"
+        android:centerColor="#063A91"
+        android:endColor="#087FE8"
+        android:type="linear" />
+</shape>
