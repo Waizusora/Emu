@@ -1,0 +1,28 @@
+From 4a7b1b9f3c9d Mon Sep 17 00:00:00 2001
+Subject: [PATCH] 9p: avoid Android Bionic stat nanosecond macro collisions
+
+Bionic exposes st_atime_nsec, st_mtime_nsec and st_ctime_nsec as macros
+mapping to members of struct stat. Those macros also rewrite identically
+named fields in QEMU's V9fsStatDotl wire-format structure. Undefine the
+compatibility aliases before declaring the protocol structure; QEMU uses
+explicit st_atim/st_mtim/st_ctim members for host stat data.
+
+--- a/fsdev/9p-marshal.h
++++ b/fsdev/9p-marshal.h
+@@ -1,6 +1,16 @@
+ #ifndef QEMU_9P_MARSHAL_H
+ #define QEMU_9P_MARSHAL_H
+ 
++/*
++ * Android Bionic defines legacy nanosecond aliases as macros. They collide
++ * with the 9P protocol field names below and corrupt the structure layout.
++ * QEMU accesses host stat timestamps through st_atim/st_mtim/st_ctim, so the
++ * legacy aliases are not needed by this 9P marshalling header.
++ */
++#undef st_atime_nsec
++#undef st_mtime_nsec
++#undef st_ctime_nsec
++
+ #include "p9array.h"
+ 
+ typedef struct V9fsString {
