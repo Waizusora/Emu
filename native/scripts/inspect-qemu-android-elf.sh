@@ -45,16 +45,16 @@ for name in qemu-system-aarch64 qemu-img; do
   }
 
   # Android 64-bit executables must use Android's system linker, not a host loader.
-  interpreter="$("$READELF" --program-headers --wide "$binary" | sed -n 's/.*Requesting program interpreter: \\([^]]*\\)\\].*/\\1/p' | head -n 1)"
+  interpreter="$("$READELF" --program-headers --wide "$binary" | sed -n 's/.*Requesting program interpreter: \([^]]*\)\].*/\1/p' | head -n 1)"
   if [[ "$interpreter" != "/system/bin/linker64" ]]; then
     echo "ERROR: unexpected ELF interpreter for $name: '${interpreter:-missing}'" >&2
     exit 1
   fi
 
   dynamic="$("$READELF" --dynamic --wide "$binary")"
-  if grep -Eq '\\((RPATH|RUNPATH)\\)' <<< "$dynamic"; then
+  if grep -Eq '\((RPATH|RUNPATH)\)' <<< "$dynamic"; then
     echo "ERROR: $name contains an RPATH/RUNPATH that may reference build-host paths" >&2
-    grep -E '\\((RPATH|RUNPATH)\\)' <<< "$dynamic" >&2
+    grep -E '\((RPATH|RUNPATH)\)' <<< "$dynamic" >&2
     exit 1
   fi
 
@@ -62,7 +62,7 @@ for name in qemu-system-aarch64 qemu-img; do
   echo "ELF machine: $machine"
   echo "ELF interpreter: $interpreter"
   echo "DT_NEEDED shared libraries:"
-  needed="$(sed -n 's/.*(NEEDED).*Shared library: \\([^]]*\\)\\].*/\\1/p' <<< "$dynamic")"
+  needed="$(sed -n 's/.*(NEEDED).*Shared library: \([^]]*\)\].*/\1/p' <<< "$dynamic")"
   if [[ -n "$needed" ]]; then
     while IFS= read -r library; do
       [[ -n "$library" ]] && echo "  - $library"
