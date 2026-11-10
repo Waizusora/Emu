@@ -46,7 +46,7 @@ BUILD_DIR="$BUILD_ROOT/pixman-$ABI"
 
 # Fetch the pinned release archive and unpack it into a clean source directory.
 if [[ ! -f "$ARCHIVE_PATH" ]]; then
-  curl --fail --location --retry 3 "$URL" --output "$ARCHIVE_PATH"
+  curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 "$URL" --output "$ARCHIVE_PATH"
 fi
 rm -rf "$SOURCE_DIR"
 mkdir -p "$SOURCE_DIR"
