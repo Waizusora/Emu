@@ -94,6 +94,33 @@ jobs:
       - name: Verify APK contains JNI libraries for both ABIs
         run: bash native/scripts/verify-android-apk.sh app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Verify adaptive launcher icon resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Parse the launcher XML resources so malformed adaptive or vector icons fail CI.
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path("app/src/main/res")
+          required = [
+              root / "drawable/emu_launcher_background.xml",
+              root / "drawable/emu_launcher_foreground.xml",
+              root / "drawable/emu_launcher_monochrome.xml",
+              root / "mipmap-anydpi-v26/ic_launcher.xml",
+              pathlib.Path("app/src/main/AndroidManifest.xml"),
+          ]
+          for resource in required:
+              if not resource.is_file():
+                  raise SystemExit(f"Missing launcher resource: {resource}")
+              ET.parse(resource)
+              print(f"Validated {resource}")
+          PY
+          # Ensure the built APK contains the compiled launcher resource table.
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'resources.arsc'
+
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
