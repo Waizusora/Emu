@@ -8,6 +8,74 @@
 - Execution accelerator: TCG; Android KVM is not assumed.
 - Android API floor: 28.
 
+## CPU acceleration: TCG and optional Android KVM
+
+TCG is always compiled and remains the portable default for both Android host
+ABIs. The guest remains AArch64 in both builds:
+
+| Android host ABI | AArch64 guest acceleration |
+| --- | --- |
+| `arm64-v8a` | TCG by default; optional KVM when the device kernel and Android security policy expose usable KVM |
+| `x86_64` | TCG only; an x86_64 host cannot use ARM KVM to accelerate an AArch64 guest |
+
+KVM is a **build-time optional feature**, not a promise that the running device
+can use it. To include the KVM accelerator code in an ARM64 build, set:
+
+```sh
+export QEMU_ENABLE_KVM=1
+bash native/scripts/build-qemu-android.sh arm64-v8a
+```
+
+The default is `QEMU_ENABLE_KVM=0`, which explicitly disables KVM and builds
+TCG. Setting `QEMU_ENABLE_KVM=1` for `x86_64` is rejected because the host
+and AArch64 guest architectures do not match. The CI default remains TCG-only;
+KVM-enabled builds should be tested as a separate ARM64 build variant.
+
+### Device-side KVM prerequisites
+
+There is no single Android release or GKI version that guarantees application
+access to KVM. KVM support exists in Android common ARM64 GKI configurations
+including Android 13's 5.15 branch, but a device still needs a compatible
+kernel configuration, hardware virtualization support, an operational KVM
+device node, and permission for the app process to open it. Vendor kernels,
+boot configuration, SELinux policy, protected-KVM mode, and device policy can
+change availability. Kernel version alone is not a sufficient capability
+test.
+
+On a device you control, inspect the kernel and KVM node with ADB:
+
+```sh
+adb shell uname -a
+adb shell ls -l /dev/kvm
+adb shell cat /proc/misc
+```
+
+If the device exposes its kernel configuration, check for the relevant
+configuration options:
+
+```sh
+adb shell 'zcat /proc/config.gz 2>/dev/null | grep -E "CONFIG_(VIRTUALIZATION|KVM)="'
+```
+
+Expected ARM64 kernel options include `CONFIG_VIRTUALIZATION=y` and
+`CONFIG_KVM=y`. Some devices do not expose `/proc/config.gz`; absence of
+that file does not prove KVM is disabled. The decisive runtime check is
+whether the Emu process can open `/dev/kvm` and successfully initialize the
+KVM API. A visible node without app permissions is not sufficient.
+
+The application must probe KVM at runtime and select `-accel kvm` only after
+successful initialization; otherwise it must use `-accel tcg`. Never infer
+KVM availability solely from Android version, kernel version, SoC model, or
+the presence of a GKI label. Do not instruct users to bypass SELinux or device
+security policy to obtain KVM access.
+
+AOSP's published GKI kernel matrix documents supported kernel branches, and
+the ARM64 GKI defconfig shows the virtualization/KVM config selections. These
+are references for kernel capability, not guarantees of app-level access:
+- [Android common kernel and GKI compatibility](https://source.android.com/docs/core/architecture/kernel/android-common)
+- [ARM64 KVM kernel configuration](https://android.googlesource.com/kernel/common/+/refs/heads/android-mainline/arch/arm64/kvm/Kconfig)
+- [AOSP ARM64 GKI defconfig](https://android.googlesource.com/kernel/common/+/refs/heads/android13-5.15/arch/arm64/configs/gki_defconfig)
+
 ## Current implementation
 
 The Android app builds `libemu-qemu.so` with the Android NDK and CMake for
