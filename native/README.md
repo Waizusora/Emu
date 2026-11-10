@@ -32,6 +32,31 @@ under `.work/qemu`. It records the resolved source revision in
 `native/qemu-source.lock`. Keep the generated lock file with source changes
 when updating the pinned engine.
 
+## Generate an Android Meson cross file
+
+Meson-based Android dependencies need a machine file that points to the NDK
+compiler and the ABI-specific dependency prefix. Generate it with:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/27.2.12479018"
+export ANDROID_API=28
+export QEMU_ANDROID_SYSROOT="$HOME/android-sysroots/arm64-v8a"
+
+bash native/scripts/create-android-meson-cross-file.sh arm64-v8a
+```
+
+The generated file is written to
+`.work/meson/android-arm64-v8a.ini` by default. Pass a second argument to
+select another output path. For a Meson dependency build, pass that file with
+`--cross-file`. Generate a separate file and use a separate dependency prefix
+for `x86_64`; never reuse ARM64 libraries in an x86_64 build.
+
+The generator uses the NDK compiler's built-in Android platform sysroot and
+restricts Meson's pkg-config lookup to the selected dependency prefix. This
+keeps target library metadata separate from host Linux packages. The generated
+file is a build configuration helper, not proof that the dependency stack has
+already been built or validated.
+
 ## Android cross-build prerequisites
 
 The QEMU cross-build is deliberately fail-fast. It does not use host Linux
