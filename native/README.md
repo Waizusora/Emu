@@ -98,11 +98,12 @@ rather than silently applying a partial change.
 The first patch addresses an Android Bionic header collision in QEMU's 9P
 marshal structure: Bionic defines `st_atime_nsec`, `st_mtime_nsec`, and
 `st_ctime_nsec` as macros, which otherwise rewrite the identically named 9P
-protocol fields. The second patch excludes QEMU's optional POSIX shared-memory
-host backend on Android because Bionic does not provide the `shm_open` and
-`shm_unlink` declarations required by that backend. File-backed host memory
-and ordinary virtual disk images remain available; this only removes the
-unsupported `memory-backend-shm` feature. Keep these changes isolated from
+protocol fields. The second patch probes the target compiler for the POSIX `shm_open` API
+before adding QEMU's optional shared-memory host backend. This is more robust
+than checking the reported host OS because the current cross-configuration can
+report the build OS rather than Android. Bionic does not provide the required
+API, so `memory-backend-shm` is omitted on this target. File-backed host memory
+and ordinary virtual disk images remain available. Keep these changes isolated from
 upstream source and add a new versioned patch when another Android-specific
 portability issue is identified.
 
