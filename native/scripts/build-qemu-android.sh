@@ -77,6 +77,24 @@ for tool in "$CC" "$CXX" "$AR" "$RANLIB" "$NM" "$STRIP" "$OBJCOPY" "$LD"; do
   }
 done
 
+# QEMU's configure probes cross-prefix binutils by executable name. Android
+# NDK ships LLVM tools without GNU-style target prefixes, so provide tiny
+# ABI-specific symlinks instead of pointing configure at nonexistent binaries.
+CROSS_BIN="$PKG_CONFIG_WRAPPER_ROOT/cross-bin-$ABI"
+mkdir -p "$CROSS_BIN"
+for mapping in \
+  "$TRIPLE-ar:$AR" \
+  "$TRIPLE-ranlib:$RANLIB" \
+  "$TRIPLE-nm:$NM" \
+  "$TRIPLE-strip:$STRIP" \
+  "$TRIPLE-objcopy:$OBJCOPY" \
+  "$TRIPLE-ld:$LD"; do
+  name="${mapping%%:*}"
+  target="${mapping#*:}"
+  ln -sf "$target" "$CROSS_BIN/$name"
+done
+CROSS_PREFIX="$CROSS_BIN/$TRIPLE-"
+
 # Restrict pkg-config to Android target metadata. The wrapper adds --static so
 # Libs.private and Requires.private from static GLib/Pixman are not omitted.
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
