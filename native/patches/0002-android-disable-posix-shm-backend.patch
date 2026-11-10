@@ -1,10 +1,14 @@
 From 9d31a2c5f8b1 Mon Sep 17 00:00:00 2001
-Subject: [PATCH] backends: skip POSIX shm backend on Android
+Subject: [PATCH] backends: probe POSIX shm API before building backend
 
-Android's Bionic target does not expose the POSIX shm_open/shm_unlink API
-required by QEMU's hostmem-shm backend. The Android app uses ordinary
-file-backed virtual disks and does not require this optional host backend.
-Keep the backend enabled on other supported non-Windows hosts.
+Some Android NDK/Bionic targets do not expose the POSIX shm_open/shm_unlink
+API required by QEMU's hostmem-shm backend. Do not rely on host_machine.system()
+to identify Android: QEMU's cross configuration can report the build OS for
+this probe. Check the actual target compiler headers instead.
+
+The Android app uses ordinary file-backed virtual disks and does not require
+this optional host backend. Keep it enabled on other hosts that provide the
+API.
 
 ---
  backends/meson.build | 2 +-
@@ -19,7 +23,7 @@ index 0000000000..1111111111 100644
  ), numa])
  
 -if host_os != 'windows'
-+if host_os != 'windows' and host_os != 'android'
++if host_os != 'windows' and cc.has_function('shm_open', prefix: '#include <sys/mman.h>')
    system_ss.add(files('rng-random.c'))
    system_ss.add(files('hostmem-file.c'))
    system_ss.add([files('hostmem-shm.c'), rt])
