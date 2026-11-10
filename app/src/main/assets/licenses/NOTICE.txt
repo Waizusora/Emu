@@ -1,0 +1,32 @@
+OPEN SOURCE NOTICES — CURRENT APK
+
+Emu
+Description: Android application, Jetpack Compose screens, and JNI bridge.
+Copyright: Copyright (c) 2026 Waizusora
+License: MIT License
+License text: licenses/mit.txt
+
+AndroidX and Jetpack Compose
+Description: Android core extensions, Activity integration, lifecycle APIs,
+Compose UI, and Material 3 components used by the application.
+Copyright: Google LLC and The Android Open Source Project contributors.
+License: Apache License 2.0
+License text: licenses/apache-2.0.txt
+
+Kotlin
+Description: Kotlin language and standard runtime used by the application.
+Copyright: JetBrains s.r.o. and Kotlin Programming Language contributors.
+License: Apache License 2.0
+License text: licenses/apache-2.0.txt
+
+NOT INCLUDED IN THIS APK
+
+QEMU 9.2.0 is cross-built by CI for arm64-v8a and x86_64 as separate artifacts.
+The qemu-system-aarch64 and qemu-img binaries are not currently packaged in
+this APK. QEMU is licensed under GPL-2.0. When QEMU is bundled, its license,
+corresponding source, and all licenses/notices for dependencies incorporated
+into the shipped QEMU binaries must be added to this catalog.
+
+Build tools and host-only dependencies are intentionally excluded from this
+APK inventory. Android platform APIs are provided by the operating system and
+are not bundled as application libraries.

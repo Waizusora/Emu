@@ -18,11 +18,7 @@ The Android application includes:
 - A native runtime capability API that reports whether the QEMU engine is
   actually present; the current native bridge deliberately reports unavailable.
 
-**QEMU itself is not yet built or packaged.** The JNI layer is an integration
-boundary, not a functioning emulator. QEMU 9.2.0 source/build integration,
-the `qemu-system-aarch64` runtime, `qemu-img`, VM lifecycle, SDL display/input,
-audio, and graphics backends remain subsequent implementation work. The
-QCOW2 creation screen is still a UI scaffold and does not create a disk.
+**QEMU 9.2.0 is cross-built successfully by CI for `arm64-v8a` and `x86_64`, but its binaries are not yet packaged in the APK.** CI uploads the emulator and `qemu-img` as separate build artifacts. The JNI layer remains an integration boundary, not a functioning emulator. Runtime dependency loading, APK packaging, process lifecycle, SDL display/input, audio, and graphics backends remain subsequent implementation work. The QCOW2 creation screen is still a UI scaffold and does not create a disk.
 
 ## Native integration
 
@@ -40,9 +36,7 @@ gradle :app:assembleDebug
 
 ## Licensing
 
-Emu's original application source is MIT licensed; see [LICENSE](LICENSE).
-Third-party components retain their own licenses. See [NOTICE](NOTICE) for
-the QEMU distribution and GPL compliance boundary.
+Emu's original application source is MIT licensed; see [LICENSE](LICENSE). The installed APK exposes an **Open source notices** page in Settings with license texts and attributions for components currently packaged in the APK. QEMU build artifacts are not yet part of the APK; see [NOTICE](NOTICE) for the GPL-2.0 distribution boundary that applies when QEMU is packaged.
 
 ## Android background operation and phantom-process limits
 

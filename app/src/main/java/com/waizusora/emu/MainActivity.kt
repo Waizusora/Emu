@@ -68,6 +68,8 @@ private enum class AppTab(val title: String, val symbol: String) {
 private fun EmuApp() {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
+    // Keep the notices page inside Settings so users can return without changing app navigation.
+    var showOpenSourceNotices by remember { mutableStateOf(false) }
     var selectedIso by remember { mutableStateOf<Uri?>(null) }
     var selectedDisk by remember { mutableStateOf<Uri?>(null) }
     var orientationLock by remember { mutableStateOf(false) }
@@ -198,20 +200,25 @@ private fun EmuApp() {
                     onChooseIso = { isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
                     onChooseDisk = { diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                 )
-                AppTab.Settings -> SettingsScreen(
-                    orientationLock = orientationLock,
-                    onOrientationChange = { orientationLock = it },
-                    diskName = diskName,
-                    onDiskNameChange = { diskName = it },
-                    diskSize = diskSize,
-                    onDiskSizeChange = { diskSize = it },
-                    onCreateDisk = { notice = "QCOW2 creation requires the QEMU qemu-img runtime, which is not integrated yet." },
-                    notice = notice,
-                    notificationsGranted = notificationsGranted,
-                    batteryOptimizationExempt = batteryOptimizationExempt,
-                    onRequestNotifications = { requestNotificationPermission() },
-                    onRequestBatteryExemption = { openBatteryOptimizationSettings() }
-                )
+                AppTab.Settings -> if (showOpenSourceNotices) {
+                    OpenSourceNoticesScreen(onBack = { showOpenSourceNotices = false })
+                } else {
+                    SettingsScreen(
+                        orientationLock = orientationLock,
+                        onOrientationChange = { orientationLock = it },
+                        diskName = diskName,
+                        onDiskNameChange = { diskName = it },
+                        diskSize = diskSize,
+                        onDiskSizeChange = { diskSize = it },
+                        onCreateDisk = { notice = "QCOW2 creation requires the QEMU qemu-img runtime, which is not integrated yet." },
+                        notice = notice,
+                        notificationsGranted = notificationsGranted,
+                        batteryOptimizationExempt = batteryOptimizationExempt,
+                        onRequestNotifications = { requestNotificationPermission() },
+                        onRequestBatteryExemption = { openBatteryOptimizationSettings() },
+                        onOpenSourceNotices = { showOpenSourceNotices = true }
+                    )
+                }
             }
         }
     }
@@ -305,7 +312,8 @@ private fun SettingsScreen(
     notificationsGranted: Boolean,
     batteryOptimizationExempt: Boolean,
     onRequestNotifications: () -> Unit,
-    onRequestBatteryExemption: () -> Unit
+    onRequestBatteryExemption: () -> Unit,
+    onOpenSourceNotices: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -363,6 +371,25 @@ private fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+        }
+        item {
+            // Provide a direct, tappable entry to the bundled license and attribution catalog.
+            Card(onClick = onOpenSourceNotices, shape = RoundedCornerShape(20.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Open source notices", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "View included components, copyright and full license texts.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text("›", style = MaterialTheme.typography.headlineMedium)
                 }
             }
         }

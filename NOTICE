@@ -1,9 +1,18 @@
 Emu application source code is licensed under the MIT License in LICENSE.
 
-Third-party components are not relicensed by this notice. QEMU is distributed
-under its own upstream license terms, including GPL-2.0 for relevant components.
-If QEMU is integrated or distributed with Emu, the corresponding source,
-license texts, notices, and other applicable GPL compliance materials must be
-provided. SDL and other dependencies retain their respective upstream licenses.
+The current APK packages the Emu application and JNI bridge, Kotlin runtime,
+and AndroidX / Jetpack Compose libraries. Their applicable license texts and
+attributions are bundled in app/src/main/assets/licenses/ and are accessible
+from Settings > Open source notices in the application.
 
-No QEMU or SDL binaries are included in the current application scaffold.
+QEMU 9.2.0 is now cross-built by CI for arm64-v8a and x86_64. The resulting
+qemu-system-aarch64 and qemu-img files are uploaded as separate CI artifacts;
+they are not currently packaged in the APK. QEMU remains under its upstream
+GPL-2.0 licensing terms. Before distributing QEMU in the APK, include the
+applicable GPL license text, corresponding source and notices, plus the
+licenses and notices for every statically or dynamically incorporated
+dependency actually shipped with those binaries.
+
+Build tools and host-only dependencies are not listed as APK components.
+Third-party components retain their own licenses; this notice does not
+relicense them under MIT.

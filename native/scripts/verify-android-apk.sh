@@ -26,4 +26,16 @@ for ABI in arm64-v8a x86_64; do
   echo "OK: $LIBRARY"
 done
 
-echo "APK ABI packaging verification passed: $APK"
+# Require license texts and attribution inventory to be present in the installed APK.
+for LICENSE_ASSET in \
+  assets/licenses/mit.txt \
+  assets/licenses/apache-2.0.txt \
+  assets/licenses/NOTICE.txt; do
+  if ! grep -Fqx "$LICENSE_ASSET" <<< "$CONTENTS"; then
+    echo "ERROR: APK is missing $LICENSE_ASSET" >&2
+    exit 1
+  fi
+  echo "OK: $LICENSE_ASSET"
+done
+
+echo "APK ABI and open-source notice packaging verification passed: $APK"
