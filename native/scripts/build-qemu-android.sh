@@ -172,5 +172,36 @@ INFO
 # from the emulator binary so it can be packaged and tested independently.
 ninja -C "$BUILD_DIR" qemu-system-aarch64 qemu-img
 
+# Confirm both deliverables exist and are executable before CI archives them.
+for binary in "$BUILD_DIR/qemu-system-aarch64" "$BUILD_DIR/qemu-img"; do
+  [[ -s "$binary" && -x "$binary" ]] || {
+    echo "ERROR: expected executable was not produced: $binary" >&2
+    exit 1
+  }
+done
+
+# Use the NDK's ELF reader to catch host/target ABI mix-ups before packaging.
+READELF="$TOOLCHAIN/llvm-readelf"
+[[ -x "$READELF" ]] || {
+  echo "ERROR: missing NDK ELF inspection tool: $READELF" >&2
+  exit 2
+}
+case "$ABI" in
+  arm64-v8a)
+    EXPECTED_MACHINE="AArch64"
+    ;;
+  x86_64)
+    EXPECTED_MACHINE="Advanced Micro Devices X86-64"
+    ;;
+esac
+for binary in "$BUILD_DIR/qemu-system-aarch64" "$BUILD_DIR/qemu-img"; do
+  actual_machine="$("$READELF" --file-header "$binary" | awk -F: '/Machine:/ { sub(/^[[:space:]]+/, "", $2); print $2; exit }')"
+  [[ "$actual_machine" == "$EXPECTED_MACHINE" ]] || {
+    echo "ERROR: unexpected ELF machine for $binary: '$actual_machine' (expected '$EXPECTED_MACHINE')" >&2
+    exit 1
+  }
+  echo "Verified Android $ABI ELF: $binary ($actual_machine)"
+done
+
 echo "QEMU binaries built under: $BUILD_DIR"
 echo "Next: inspect ELF dependencies and run device-level smoke tests before packaging."
