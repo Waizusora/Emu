@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Single-color monitor silhouette for Android themed launcher icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M104,112 H328 C344,112 356,124 356,140 V266 C356,282 344,294 328,294 H104 C88,294 76,282 76,266 V140 C76,124 88,112 104,112 Z M112,128 H320 C330,128 338,136 338,146 V252 C338,262 330,270 320,270 H112 C102,270 94,262 94,252 V146 C94,136 102,128 112,128 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M190,294 H242 L252,330 H180 Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M164,330 H268 C276,330 282,336 282,344 C282,350 276,356 268,356 H164 C156,356 150,350 150,344 C150,336 156,330 164,330 Z" />
+</vector>
