@@ -70,7 +70,7 @@ for name in qemu-system-aarch64 qemu-img; do
 
   # QEMU may depend on Android's public system libraries, but it must not
   # accidentally retain host or private-library dependencies.
-  needed_libraries="$(sed -n 's/.*Shared library: \\[\\([^]]*\\)\\].*/\\1/p' <<< "$dynamic")"
+  needed_libraries="$(sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' <<< "$dynamic")"
   if [[ -z "$needed_libraries" ]]; then
     echo "ERROR: $name has no DT_NEEDED entries; expected Android libc linkage" >&2
     exit 1
