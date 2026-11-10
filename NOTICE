@@ -1,0 +1,9 @@
+Emu application source code is licensed under the MIT License in LICENSE.
+
+Third-party components are not relicensed by this notice. QEMU is distributed
+under its own upstream license terms, including GPL-2.0 for relevant components.
+If QEMU is integrated or distributed with Emu, the corresponding source,
+license texts, notices, and other applicable GPL compliance materials must be
+provided. SDL and other dependencies retain their respective upstream licenses.
+
+No QEMU or SDL binaries are included in the current application scaffold.
