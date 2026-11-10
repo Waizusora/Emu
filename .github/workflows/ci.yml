@@ -159,6 +159,29 @@ jobs:
       - name: Build and verify Android dependency sysroot
         run: bash native/scripts/build-android-deps.sh "${{ matrix.abi }}"
 
+      - name: Fetch pinned QEMU source
+        run: bash native/scripts/fetch-qemu.sh
+
+      - name: Cross-build QEMU system emulator and qemu-img
+        env:
+          # Reuse the ABI-specific dependency sysroot built immediately above.
+          QEMU_ANDROID_SYSROOT: ${{ github.workspace }}/.work/sysroots/${{ matrix.abi }}
+          QEMU_PKG_CONFIG_LIBDIR: ${{ github.workspace }}/.work/sysroots/${{ matrix.abi }}/usr/lib/pkgconfig:${{ github.workspace }}/.work/sysroots/${{ matrix.abi }}/usr/share/pkgconfig
+          QEMU_SOURCE_DIR: ${{ github.workspace }}/.work/qemu
+          QEMU_BUILD_ROOT: ${{ github.workspace }}/.work/qemu-build
+          QEMU_TOOL_WRAPPER_ROOT: ${{ github.workspace }}/.work/toolchain
+        run: bash native/scripts/build-qemu-android.sh "${{ matrix.abi }}"
+
+      - name: Upload QEMU Android binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: emu-qemu-9.2.0-${{ matrix.abi }}
+          path: |
+            .work/qemu-build/${{ matrix.abi }}/qemu-system-aarch64
+            .work/qemu-build/${{ matrix.abi }}/qemu-img
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload Android dependency sysroot
         uses: actions/upload-artifact@v4
         with:
