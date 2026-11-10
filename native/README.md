@@ -208,6 +208,28 @@ validation matrix; AOSP maintains a separate Android QEMU build workflow.
 See the upstream [QEMU build-system documentation](https://qemu.readthedocs.io/en/v9.2.0/devel/build-system.html)
 and [AOSP QEMU development notes](https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/docs/DEVELOPMENT.md).
 
+## Inspect the QEMU Android ELF outputs
+
+After each ABI cross-build, CI runs
+`native/scripts/inspect-qemu-android-elf.sh` against both
+`qemu-system-aarch64` and `qemu-img`. It verifies the ELF machine,
+requires Android's 64-bit system linker (`/system/bin/linker64`), rejects
+build-host `RPATH`/`RUNPATH` entries, and prints every `DT_NEEDED`
+shared-library dependency into the CI log.
+
+Run the inspection locally after a successful QEMU build:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/27.2.12479018"
+bash native/scripts/inspect-qemu-android-elf.sh arm64-v8a
+```
+
+This check validates ELF metadata only. It does not prove that every shared
+library is available to an app process on a device, nor that QEMU can start.
+The next integration gate is to resolve the reported dependencies, package
+the executables and any permitted runtime libraries, then perform device-side
+version/help and guest-boot smoke tests before enabling the JNI runtime.
+
 ## Planned app integration
 
 1. Establish reproducible dependency builds for both Android host ABIs.
