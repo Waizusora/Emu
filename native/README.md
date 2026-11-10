@@ -141,3 +141,28 @@ QEMU is GPL-2.0 licensed. Distribution of a linked or modified QEMU runtime
 must satisfy the applicable GPL source, notice, and corresponding-source
 requirements. Keep upstream QEMU and dependency license texts with the
 distributed application. The app's MIT license does not relicense QEMU.
+
+## Build the first Android dependency (zlib)
+
+The dependency pipeline starts with a pinned static zlib build. The script
+uses the Android NDK CMake toolchain and installs headers and libraries into
+one ABI-specific prefix:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/27.2.12479018"
+export ANDROID_API=28
+export QEMU_ANDROID_SYSROOT="$HOME/android-sysroots/arm64-v8a"
+
+bash native/scripts/build-zlib-android.sh arm64-v8a
+```
+
+Use a separate prefix for `x86_64`. The default prefix is
+`.work/sysroots/<abi>`; set `QEMU_ANDROID_SYSROOT` to override it. Source
+and build directories are isolated under `.work/deps`. The script checks
+out the exact upstream zlib tag `v1.3.1` and does not build or claim to
+provide GLib or Pixman. The QEMU build remains blocked until those required
+dependencies and any configure-detected dependencies are built for the same
+ABI.
+
+This script is syntax-checked by CI, but dependency compilation is not yet a
+CI job and has not been represented as a validated Android build.
