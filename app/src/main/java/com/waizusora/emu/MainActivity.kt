@@ -152,8 +152,8 @@ private fun EmuApp() {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // Request the runtime notification permission only after the user taps this button.
                     requestNotificationPermission()
-                    openBatteryOptimizationSettings()
                     preferences.edit().putBoolean("onboarding_complete", true).apply()
                     showOnboarding = false
                 }) { Text("Atur izin") }
