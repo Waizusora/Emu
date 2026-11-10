@@ -81,8 +81,9 @@ import os
 from pathlib import Path
 
 def meson_string(value):
-    # JSON string literals are compatible with Meson's quoted string syntax.
-    return json.dumps(value)
+    # Meson machine files require single-quoted strings, unlike JSON literals.
+    # Escape backslashes and apostrophes so tool paths remain valid.
+    return "'" + value.replace("\\\\", "\\\\\\\\").replace("'", "\\\\'") + "'"
 
 pkg_dirs = os.environ["ANDROID_PKG_CONFIG_DIRS"].split(":")
 lines = [
