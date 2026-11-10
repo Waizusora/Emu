@@ -142,7 +142,7 @@ INFO
 "$SOURCE_DIR/configure" \
   --prefix="$BUILD_DIR/install" \
   --target-list=aarch64-softmmu \
-  --cross-prefix="$TOOLCHAIN/$TRIPLE-" \
+  --cross-prefix="$CROSS_PREFIX" \
   --cc="$CC" \
   --cxx="$CXX" \
   --host-cc="${HOST_CC:-cc}" \
@@ -151,7 +151,6 @@ INFO
   --enable-tcg \
   --disable-kvm \
   --disable-werror \
-  --disable-download \
   --disable-docs \
   --disable-gtk \
   --disable-sdl \
