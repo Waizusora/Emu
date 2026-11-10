@@ -7,23 +7,32 @@ their own installation ISO and virtual disk images.
 
 ## Current status
 
-The initial Android application scaffold includes:
+The Android application includes:
 
 - Kotlin and Jetpack Compose with Material 3.
-- A compact Home, Storage, and Settings navigation layout.
+- Home, Storage, and Settings navigation.
 - System document picker flows for selecting ISO and QCOW2 files.
 - Persistable read access for user-selected document URIs where supported.
 - A landscape-orientation preference.
-- Android CI workflow for building the debug APK.
-- App module ABI filters for `arm64-v8a` and `x86_64`.
+- An Android JNI library built with the NDK and CMake for both supported ABIs.
+- A native runtime capability API that reports whether the QEMU engine is
+  actually present; the current native bridge deliberately reports unavailable.
 
-The QEMU runtime, SDL display/input integration, audio, graphics backends, VM
-lifecycle, and native `qemu-img` operations are not integrated yet. The
-QCOW2 creation screen is currently a UI scaffold and does not create a disk.
+**QEMU itself is not yet built or packaged.** The JNI layer is an integration
+boundary, not a functioning emulator. QEMU 9.2.0 source/build integration,
+the `qemu-system-aarch64` runtime, `qemu-img`, VM lifecycle, SDL display/input,
+audio, and graphics backends remain subsequent implementation work. The
+QCOW2 creation screen is still a UI scaffold and does not create a disk.
+
+## Native integration
+
+See [native integration notes](native/README.md) for the pinned QEMU version,
+Android ABI plan, and the next runtime integration steps.
 
 ## Build
 
-Requirements: JDK 17, Android SDK platform 35, and Gradle 8.10.2.
+Requirements: JDK 17, Android SDK platform 35, Android NDK 27.2.12479018,
+CMake 3.22.1, and Gradle 8.10.2.
 
 ```sh
 gradle :app:assembleDebug
