@@ -14,6 +14,7 @@ API="${ANDROID_API:-28}"
 NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
 SYSROOT="${QEMU_ANDROID_SYSROOT:-}"
 PKG_CONFIG_LIBDIR_OVERRIDE="${QEMU_PKG_CONFIG_LIBDIR:-}"
+PKG_CONFIG_WRAPPER_ROOT="${QEMU_TOOL_WRAPPER_ROOT:-$ROOT/.work/toolchain}"
 
 # Map Android ABI names to NDK compiler target prefixes.
 case "$ABI" in
@@ -65,25 +66,38 @@ CC="$TOOLCHAIN/$TRIPLE$API-clang"
 CXX="$TOOLCHAIN/$TRIPLE$API-clang++"
 AR="$TOOLCHAIN/llvm-ar"
 RANLIB="$TOOLCHAIN/llvm-ranlib"
-for tool in "$CC" "$CXX" "$AR" "$RANLIB"; do
+NM="$TOOLCHAIN/llvm-nm"
+STRIP="$TOOLCHAIN/llvm-strip"
+OBJCOPY="$TOOLCHAIN/llvm-objcopy"
+LD="$TOOLCHAIN/ld.lld"
+for tool in "$CC" "$CXX" "$AR" "$RANLIB" "$NM" "$STRIP" "$OBJCOPY" "$LD"; do
   [[ -x "$tool" ]] || {
     echo "ERROR: missing NDK tool: $tool" >&2
     exit 2
   }
 done
 
-# Restrict pkg-config to Android target metadata. This prevents accidentally
-# linking GLib or Pixman from the Linux build host into an Android binary.
+# Restrict pkg-config to Android target metadata. The wrapper adds --static so
+# Libs.private and Requires.private from static GLib/Pixman are not omitted.
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 export PKG_CONFIG_LIBDIR="$PKG_CONFIG_LIBDIR_OVERRIDE"
 export PKG_CONFIG_ALLOW_CROSS=1
-export CC CXX AR RANLIB
+mkdir -p "$PKG_CONFIG_WRAPPER_ROOT"
+PKG_CONFIG_WRAPPER="$PKG_CONFIG_WRAPPER_ROOT/pkg-config-android-static"
+cat > "$PKG_CONFIG_WRAPPER" <<'PKGCONFIG_WRAPPER'
+#!/usr/bin/env sh
+# Preserve pkg-config arguments while including transitive static dependencies.
+exec pkg-config --static "$@"
+PKGCONFIG_WRAPPER
+chmod 0755 "$PKG_CONFIG_WRAPPER"
+export PKG_CONFIG="$PKG_CONFIG_WRAPPER"
+export CC CXX AR RANLIB NM STRIP OBJCOPY LD
 export CFLAGS="${CFLAGS:--O2 -fPIC}"
 export CXXFLAGS="${CXXFLAGS:--O2 -fPIC}"
 
 # QEMU's system emulator requires GLib and Pixman. Refuse to configure when
 # either dependency is absent instead of producing a misleading partial build.
-for dependency in glib-2.0 pixman-1; do
+for dependency in glib-2.0 pixman-1 zlib; do
   if ! pkg-config --exists "$dependency"; then
     echo "ERROR: target dependency '$dependency' not found via QEMU_PKG_CONFIG_LIBDIR" >&2
     exit 2
