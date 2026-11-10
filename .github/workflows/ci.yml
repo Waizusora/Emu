@@ -10,12 +10,36 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: android-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  detect-native-changes:
+    # Detect native source changes without running expensive builds on every push.
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history lets the filter compare the correct base and head commits.
+          fetch-depth: 0
+
+      - name: Detect native dependency inputs
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Changes to the native scripts or this workflow can affect sysroot builds.
+          filters: |
+            native:
+              - 'native/scripts/**'
+              - '.github/workflows/ci.yml'
+
   build:
     name: Build Android debug APK and verify JNI ABIs
     runs-on: ubuntu-latest
@@ -76,8 +100,9 @@ jobs:
           retention-days: 7
 
   native-dependencies:
-    # Keep the expensive native cross-build opt-in; run it from Actions > Android CI > Run workflow.
-    if: github.event_name == 'workflow_dispatch'
+    # Run manually or automatically when native build inputs change.
+    needs: detect-native-changes
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.detect-native-changes.outputs.native == 'true') }}
     name: Build native dependency sysroot (${{ matrix.abi }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
