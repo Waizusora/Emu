@@ -82,14 +82,14 @@ CC="$CC" AR="$AR" RANLIB="$RANLIB" STRIP="$STRIP" \
 CFLAGS="-O2 -fPIC" \
 "$SOURCE_DIR/configure" \
   --host="$TRIPLE" \
-  --prefix="$PREFIX/usr" \
+  --prefix=/usr \
   --disable-shared \
   --enable-static \
   --with-pic
 
 # Build and install the static archive and headers into the ABI prefix.
 make -j"${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-make install
+make DESTDIR="$PREFIX" install
 
 [[ -f "$PREFIX/usr/lib/libffi.a" ]] || {
   echo "ERROR: libffi static archive missing from $PREFIX/usr/lib" >&2
