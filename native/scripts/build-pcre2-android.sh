@@ -61,7 +61,7 @@ cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" -G Ninja \
   -DANDROID_ABI="$ABI" \
   -DANDROID_PLATFORM="android-$API" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$PREFIX/usr" \
+  -DCMAKE_INSTALL_PREFIX=/usr \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DBUILD_SHARED_LIBS=OFF \
@@ -75,7 +75,7 @@ cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" -G Ninja \
 
 # Install the target library and development metadata into the ABI prefix.
 cmake --build "$BUILD_DIR" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-cmake --install "$BUILD_DIR"
+DESTDIR="$PREFIX" cmake --install "$BUILD_DIR"
 
 [[ -f "$PREFIX/usr/lib/libpcre2-8.a" ]] || {
   echo "ERROR: PCRE2 8-bit static archive missing from $PREFIX/usr/lib" >&2
