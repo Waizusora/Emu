@@ -230,3 +230,16 @@ bash native/scripts/verify-android-sysroot.sh arm64-v8a
 
 This is a structural sysroot check only. It does not establish that the
 libraries load on Android or that QEMU compiles or boots successfully.
+
+
+## QEMU cross-link toolchain handling
+
+The QEMU build driver explicitly selects the NDK LLVM binutils rather than
+assuming GNU tools named after the Android target triple exist. It also
+creates a local pkg-config wrapper that requests static dependency metadata,
+so GLib and Pixman private link requirements are included while QEMU itself
+remains a normal Android executable. The target lookup is restricted to the
+ABI-specific sysroot and requires `glib-2.0`, `pixman-1`, and `zlib`.
+
+The wrapper is generated under the ignored `.work/toolchain` directory and
+is not committed as a generated build artifact.
