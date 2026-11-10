@@ -1,6 +1,15 @@
 package com.waizusora.emu
 
 import android.app.Activity
+import android.Manifest
+import android.content.Context
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -66,6 +75,39 @@ private fun EmuApp() {
     var diskName by remember { mutableStateOf("linux-disk") }
     var diskSize by remember { mutableStateOf("16") }
     var notice by remember { mutableStateOf("No image selected yet.") }
+    // Show a one-time onboarding explanation before asking the user to open system permission screens.
+    val preferences = remember { context.getSharedPreferences("emu_preferences", Context.MODE_PRIVATE) }
+    var showOnboarding by remember { mutableStateOf(!preferences.getBoolean("onboarding_complete", false)) }
+    var permissionRefresh by remember { mutableIntStateOf(0) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { permissionRefresh++ }
+
+    val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    val batteryOptimizationExempt = remember(permissionRefresh) {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && !notificationsGranted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    fun openBatteryOptimizationSettings() {
+        // Android owns the exemption prompt; users must explicitly approve it.
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+        } else {
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        }
+        runCatching { context.startActivity(intent) }
+    }
 
     LaunchedEffect(orientationLock) {
         (context as? Activity)?.requestedOrientation = if (orientationLock) {
@@ -92,6 +134,38 @@ private fun EmuApp() {
             selectedDisk = uri
             notice = "Disk selected: ${uri.lastPathSegment ?: "virtual disk"}"
         }
+    }
+
+    if (showOnboarding) {
+        AlertDialog(
+            onDismissRequest = {
+                preferences.edit().putBoolean("onboarding_complete", true).apply()
+                showOnboarding = false
+            },
+            title = { Text("Selamat datang di Emu") },
+            text = {
+                Text(
+                    "Emu menjalankan sistem Linux virtual melalui QEMU. Pilih ISO dan disk melalui pemilih file Android. " +
+                    "Jika sesi VM berjalan, notifikasi foreground membantu menunjukkan aktivitasnya. " +
+                    "Anda dapat mengizinkan notifikasi dan mengecualikan Emu dari optimasi baterai. " +
+                    "Android tetap dapat menghentikan aplikasi saat force stop, tekanan memori, atau pembatasan sistem."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    requestNotificationPermission()
+                    openBatteryOptimizationSettings()
+                    preferences.edit().putBoolean("onboarding_complete", true).apply()
+                    showOnboarding = false
+                }) { Text("Atur izin") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    preferences.edit().putBoolean("onboarding_complete", true).apply()
+                    showOnboarding = false
+                }) { Text("Nanti") }
+            }
+        )
     }
 
     Scaffold(bottomBar = {
@@ -133,7 +207,11 @@ private fun EmuApp() {
                     diskSize = diskSize,
                     onDiskSizeChange = { diskSize = it },
                     onCreateDisk = { notice = "QCOW2 creation requires the QEMU qemu-img runtime, which is not integrated yet." },
-                    notice = notice
+                    notice = notice,
+                    notificationsGranted = notificationsGranted,
+                    batteryOptimizationExempt = batteryOptimizationExempt,
+                    onRequestNotifications = { requestNotificationPermission() },
+                    onRequestBatteryExemption = { openBatteryOptimizationSettings() }
                 )
             }
         }
@@ -224,7 +302,11 @@ private fun SettingsScreen(
     diskSize: String,
     onDiskSizeChange: (String) -> Unit,
     onCreateDisk: () -> Unit,
-    notice: String
+    notice: String,
+    notificationsGranted: Boolean,
+    batteryOptimizationExempt: Boolean,
+    onRequestNotifications: () -> Unit,
+    onRequestBatteryExemption: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -256,6 +338,54 @@ private fun SettingsScreen(
                         enabled = diskName.isNotBlank() && (diskSize.toLongOrNull() ?: 0L) > 0L
                     ) { Text("Create QCOW2") }
                     Text("Disk creation will call QEMU qemu-img. Native runtime integration is pending.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Background operation", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (notificationsGranted) "Notifications: allowed" else "Notifications: not allowed",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(onClick = onRequestNotifications, modifier = Modifier.fillMaxWidth()) {
+                        Text("Allow notifications")
+                    }
+                    Text(
+                        if (batteryOptimizationExempt) "Battery optimization: exempt" else "Battery optimization: enabled",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(onClick = onRequestBatteryExemption, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open battery exemption settings")
+                    }
+                    Text(
+                        "Battery exemption reduces Doze restrictions but does not prevent force-stop, OEM task killers, or low-memory termination. A foreground service with a persistent notification is required while a VM is running.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Phantom process (ADB)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Android may limit child processes started by an app. This can affect QEMU helper processes. The following ADB commands are an advanced, device-wide workaround; support varies by Android version and vendor.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text("Disable phantom-process monitoring (if supported):", fontWeight = FontWeight.SemiBold)
+                    Text("adb shell settings put global settings_enable_monitor_phantom_procs 0", style = MaterialTheme.typography.bodySmall)
+                    Text("Raise the phantom-process limit:", fontWeight = FontWeight.SemiBold)
+                    Text("adb shell device_config set_sync_disabled_for_tests persistent\nadb shell device_config put activity_manager max_phantom_processes 2147483647", style = MaterialTheme.typography.bodySmall)
+                    Text("Restore defaults:", fontWeight = FontWeight.SemiBold)
+                    Text("adb shell settings delete global settings_enable_monitor_phantom_procs\nadb shell device_config delete activity_manager max_phantom_processes\nadb shell device_config set_sync_disabled_for_tests none", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Commands may be ignored or reset by the manufacturer. They change device-wide process policy, may increase battery and memory use, and are not required on every device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
