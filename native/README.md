@@ -213,8 +213,8 @@ and [AOSP QEMU development notes](https://android.googlesource.com/platform/exte
 After each ABI cross-build, CI runs
 `native/scripts/inspect-qemu-android-elf.sh` against both
 `qemu-system-aarch64` and `qemu-img`. It verifies the ELF machine,
-requires Android's 64-bit system linker (`/system/bin/linker64`), rejects
-build-host `RPATH`/`RUNPATH` entries, and prints every `DT_NEEDED`
+requires Android's 64-bit system linker (`/system/bin/linker64`), requires build-host `RPATH`/`RUNPATH` entries to be removed with
+`patchelf` before artifact upload, and prints every `DT_NEEDED`
 shared-library dependency into the CI log.
 
 Run the inspection locally after a successful QEMU build:
