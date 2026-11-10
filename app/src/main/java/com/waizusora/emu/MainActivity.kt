@@ -115,6 +115,8 @@ private fun EmuApp() {
                 AppTab.Home -> HomeScreen(
                     hasMedia = selectedIso != null || selectedDisk != null,
                     notice = notice,
+                    runtimeStatus = QemuRuntime.status(),
+                    runtimeAvailable = QemuRuntime.isAvailable(),
                     onChooseIso = { isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
                     onChooseDisk = { diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                 )
@@ -143,6 +145,8 @@ private fun EmuApp() {
 private fun HomeScreen(
     hasMedia: Boolean,
     notice: String,
+    runtimeStatus: String,
+    runtimeAvailable: Boolean,
     onChooseIso: () -> Unit,
     onChooseDisk: () -> Unit
 ) {
@@ -176,7 +180,8 @@ private fun HomeScreen(
             }
         }
         item {
-            Text("AArch64 guest · QEMU TCG", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            Text(if (runtimeAvailable) "QEMU 9.2.0 · TCG ready" else "QEMU 9.2.0 · runtime unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            Text(runtimeStatus, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
