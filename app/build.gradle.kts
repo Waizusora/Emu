@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.waizusora.emu"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
     defaultConfig {
         applicationId = "com.waizusora.emu"
         minSdk = 28
