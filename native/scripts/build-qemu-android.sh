@@ -30,6 +30,25 @@ case "$ABI" in
     ;;
 esac
 
+# KVM is an optional build feature for native AArch64 Android hosts only.
+# TCG remains enabled in every build and is the fallback on all devices.
+QEMU_ENABLE_KVM="${QEMU_ENABLE_KVM:-0}"
+case "$QEMU_ENABLE_KVM" in
+  0|1) ;;
+  *)
+    echo "ERROR: QEMU_ENABLE_KVM must be 0 (default) or 1" >&2
+    exit 2
+    ;;
+esac
+if [[ "$QEMU_ENABLE_KVM" == "1" && "$ABI" != "arm64-v8a" ]]; then
+  echo "ERROR: KVM acceleration for the AArch64 guest requires an arm64-v8a host build; x86_64 must use TCG" >&2
+  exit 2
+fi
+KVM_CONFIGURE_ARGS=(--disable-kvm)
+if [[ "$QEMU_ENABLE_KVM" == "1" ]]; then
+  KVM_CONFIGURE_ARGS=(--enable-kvm)
+fi
+
 # Validate source, NDK, API level, and the cross-compiled dependency sysroot.
 [[ -x "$SOURCE_DIR/configure" ]] || {
   echo "ERROR: QEMU source missing; run bash native/scripts/fetch-qemu.sh first" >&2
@@ -137,8 +156,9 @@ This cross-build is experimental. A successful build does not prove that the
 runtime loads or boots correctly on a physical Android device.
 INFO
 
-# Configure the AArch64 system emulator with TCG. The NDK cross-prefix marks
-# this as a cross-build; host-cc remains the native compiler for build tools.
+# Configure the AArch64 system emulator with TCG and optional same-architecture
+# KVM. The NDK cross-prefix marks this as a cross-build; host-cc remains native.
+echo "KVM build support: $([[ "$QEMU_ENABLE_KVM" == "1" ]] && echo enabled || echo disabled)"
 "$SOURCE_DIR/configure" \
   --prefix="$BUILD_DIR/install" \
   --target-list=aarch64-softmmu \
@@ -149,7 +169,7 @@ INFO
   --extra-cflags="-I$SYSROOT/usr/include" \
   --extra-ldflags="-L$SYSROOT/usr/lib" \
   --enable-tcg \
-  --disable-kvm \
+  "${KVM_CONFIGURE_ARGS[@]}" \
   --disable-vhost-user \
   --disable-vhost-crypto \
   --disable-vhost-user-blk-server \
