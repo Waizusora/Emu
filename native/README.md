@@ -166,3 +166,21 @@ ABI.
 
 This script is syntax-checked by CI, but dependency compilation is not yet a
 CI job and has not been represented as a validated Android build.
+
+## Build the Android dependency foundation
+
+The current dependency scripts build three pinned components for one ABI.
+Install host tools `git`, `curl`, `tar`, `make`, CMake, Ninja, Meson,
+Python 3, and pkg-config, then run:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/27.2.12479018"
+export ANDROID_API=28
+bash native/scripts/build-android-deps.sh arm64-v8a
+```
+
+The orchestrator builds zlib 1.3.1, libffi 3.4.6, and PCRE2 10.44, then
+generates the Meson cross file. Use `x86_64` as a separate invocation and
+keep each ABI's sysroot separate. This is not yet a complete QEMU dependency
+sysroot: GLib and Pixman still need Android builds before QEMU can configure.
+These native dependency builds are not currently part of the hosted CI job.
