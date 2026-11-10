@@ -95,12 +95,16 @@ upstream source and submodules are fetched. Patch files are checked with
 `git apply --check` before application, so an upstream source mismatch fails
 rather than silently applying a partial change.
 
-The initial patch addresses an Android Bionic header collision in QEMU's 9P
+The first patch addresses an Android Bionic header collision in QEMU's 9P
 marshal structure: Bionic defines `st_atime_nsec`, `st_mtime_nsec`, and
 `st_ctime_nsec` as macros, which otherwise rewrite the identically named 9P
-protocol fields and stop both Android ABI builds at compile time. Keep these
-changes isolated from upstream source and add a new versioned patch when a
-further Android-specific portability issue is identified.
+protocol fields. The second patch excludes QEMU's optional POSIX shared-memory
+host backend on Android because Bionic does not provide the `shm_open` and
+`shm_unlink` declarations required by that backend. File-backed host memory
+and ordinary virtual disk images remain available; this only removes the
+unsupported `memory-backend-shm` feature. Keep these changes isolated from
+upstream source and add a new versioned patch when another Android-specific
+portability issue is identified.
 
 ## Fetch the pinned source
 
