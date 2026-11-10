@@ -184,3 +184,32 @@ generates the Meson cross file. Use `x86_64` as a separate invocation and
 keep each ABI's sysroot separate. This is not yet a complete QEMU dependency
 sysroot: GLib and Pixman still need Android builds before QEMU can configure.
 These native dependency builds are not currently part of the hosted CI job.
+
+## Build the complete QEMU dependency sysroot
+
+The dependency orchestrator now builds the pinned native stack in order:
+zlib 1.3.1, libffi 3.4.6, PCRE2 10.44, GLib 2.82.4, and Pixman 0.44.2.
+The first three components use CMake or Autoconf; GLib and Pixman use the
+generated Meson cross file.
+
+Host requirements: Android NDK r27+, CMake, Ninja, Meson 1.3+, Python 3,
+pkg-config, Git, curl, tar, and make. On a Linux build host, run:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/27.2.12479018"
+export ANDROID_API=28
+bash native/scripts/build-android-deps.sh arm64-v8a
+```
+
+Run the same command with `x86_64` to build a separate ABI sysroot. The
+default install prefix is `.work/sysroots/<abi>/usr`; override it with
+`QEMU_ANDROID_SYSROOT`. Sources and build trees remain under ignored
+`.work/deps` directories. The orchestrator checks that `glib-2.0` and
+`pixman-1` are visible through target pkg-config metadata before returning
+success.
+
+A completed script run is a dependency-build result, not proof that QEMU 9.2
+itself compiles or runs on Android. The QEMU cross-build still needs configure
+and link validation, runtime ELF inspection, packaging, and physical-device
+tests. The dependency pipeline is not run in hosted CI yet; CI currently
+checks shell syntax and the Android app/JNI packaging only.
