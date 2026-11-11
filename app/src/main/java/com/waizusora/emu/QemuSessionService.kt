@@ -26,6 +26,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+import java.io.File
+import org.json.JSONObject
 
 enum class QemuSessionPhase { STOPPED, STARTING, RUNNING, STOPPING, FAILED }
 
@@ -52,29 +54,22 @@ class QemuSessionService : Service() {
     companion object {
         private const val ACTION_START = "com.waizusora.emu.action.START_QEMU"
         private const val ACTION_STOP = "com.waizusora.emu.action.STOP_QEMU"
-        private const val EXTRA_ARGUMENTS = "qemu_arguments"
+        private const val EXTRA_ISO_PATH = "qemu_iso_path"
+        private const val EXTRA_DISK_PATH = "qemu_disk_path"
         private const val CHANNEL_ID = "qemu_session"
         private const val NOTIFICATION_ID = 9200
         private const val STOP_REQUEST_CODE = 9201
         private const val STARTUP_GRACE_SECONDS = 2L
         private const val STOP_GRACE_SECONDS = 5L
 
-        fun startPausedProcess(context: Context) {
+        fun startProcess(context: Context, isoPath: String?, diskPath: String?) {
+            require(!isoPath.isNullOrBlank() || !diskPath.isNullOrBlank()) {
+                "Pilih ISO atau disk QCOW2 sebelum memulai guest"
+            }
             val intent = Intent(context, QemuSessionService::class.java)
                 .setAction(ACTION_START)
-                .putStringArrayListExtra(
-                    EXTRA_ARGUMENTS,
-                    arrayListOf(
-                        "-machine", "virt",
-                        "-cpu", "max",
-                        "-m", "512",
-                        "-smp", "1",
-                        "-display", "none",
-                        "-serial", "none",
-                        "-monitor", "none",
-                        "-S"
-                    )
-                )
+                .putExtra(EXTRA_ISO_PATH, isoPath)
+                .putExtra(EXTRA_DISK_PATH, diskPath)
             ContextCompat.startForegroundService(context, intent)
         }
 
@@ -100,8 +95,9 @@ class QemuSessionService : Service() {
                 startAsForeground()
                 if (sessionJob?.isActive != true) {
                     stopRequested = false
-                    val arguments = intent.getStringArrayListExtra(EXTRA_ARGUMENTS).orEmpty()
-                    sessionJob = serviceScope.launch { runSession(arguments) }
+                    val isoPath = intent.getStringExtra(EXTRA_ISO_PATH)
+                    val diskPath = intent.getStringExtra(EXTRA_DISK_PATH)
+                    sessionJob = serviceScope.launch { runSession(isoPath, diskPath) }
                 }
             }
             else -> stopSelf(startId)
@@ -109,15 +105,14 @@ class QemuSessionService : Service() {
         return START_NOT_STICKY
     }
 
-    private suspend fun runSession(arguments: List<String>) {
+    private suspend fun runSession(isoPath: String?, diskPath: String?) {
         var child: Process? = null
         var outputJob: Job? = null
         val outputTail = BoundedOutputTail()
         try {
             QemuSessionState.update(QemuSessionPhase.STARTING, "Memulai proses QEMU…")
-            check(arguments.isNotEmpty()) { "Argumen QEMU kosong" }
-            check(arguments.size <= 256 && arguments.all { it.length <= 4096 }) {
-                "Daftar argumen QEMU melebihi batas aman"
+            check(!isoPath.isNullOrBlank() || !diskPath.isNullOrBlank()) {
+                "Pilih ISO atau disk QCOW2 sebelum memulai guest"
             }
 
             val runtime = QemuRuntime.initialize(this)
@@ -127,6 +122,13 @@ class QemuSessionService : Service() {
                 "Executable qemu-system-aarch64 tidak tersedia di penyimpanan privat"
             }
 
+            val iso = withContext(Dispatchers.IO) {
+                resolveImportedMedia(isoPath, "isos", "iso")
+            }
+            val disk = withContext(Dispatchers.IO) {
+                resolveImportedMedia(diskPath, "disks", "qcow2")
+            }
+            val arguments = buildGuestArguments(iso, disk)
             val firmwareArguments = QemuRuntime.firmwareArguments(this@QemuSessionService)
             child = withContext(NonCancellable + Dispatchers.IO) {
                 ProcessBuilder(listOf(binary.absolutePath) + arguments + firmwareArguments)
@@ -160,9 +162,10 @@ class QemuSessionService : Service() {
 
             QemuSessionState.update(
                 QemuSessionPhase.RUNNING,
-                "Proses QEMU aktif. Guest Linux belum di-boot."
+                "Proses QEMU aktif. Firmware sedang mencoba boot dari " +
+                    (if (iso != null) "ISO" else "disk QCOW2") + "; status boot guest belum diverifikasi."
             )
-            updateNotification("QEMU aktif · guest belum di-boot")
+            updateNotification("QEMU aktif · proses boot guest berjalan")
 
             val exitCode = withContext(Dispatchers.IO) { runningProcess.waitFor() }
             outputJob.join()
@@ -233,6 +236,70 @@ class QemuSessionService : Service() {
                 running.waitFor(2, TimeUnit.SECONDS)
             }
         }
+    }
+
+    private fun resolveImportedMedia(path: String?, directoryName: String, extension: String): File? {
+        if (path.isNullOrBlank()) return null
+        val root = File(noBackupFilesDir, directoryName).canonicalFile
+        val media = File(path).canonicalFile
+        check(media.parentFile == root) {
+            "Media yang dipilih tidak berada di direktori privat Emu"
+        }
+        check(media.extension.equals(extension, ignoreCase = true) && media.isFile && media.canRead()) {
+            "File media ${media.name} tidak tersedia atau tidak valid"
+        }
+        check(media.length() > 0L) { "File media ${media.name} kosong" }
+        return media
+    }
+
+    private fun buildGuestArguments(iso: File?, disk: File?): List<String> {
+        val arguments = mutableListOf(
+            "-machine", "virt",
+            "-cpu", "max",
+            "-m", "512",
+            "-smp", "1",
+            "-display", "none",
+            "-serial", "none",
+            "-monitor", "none"
+        )
+
+        if (disk != null) {
+            val fileNode = JSONObject()
+                .put("driver", "file")
+                .put("filename", disk.absolutePath)
+                .put("node-name", "system-disk-file")
+            val imageNode = JSONObject()
+                .put("driver", "qcow2")
+                .put("file", "system-disk-file")
+                .put("node-name", "system-disk")
+            arguments += listOf(
+                "-blockdev", fileNode.toString(),
+                "-blockdev", imageNode.toString(),
+                "-device", "virtio-blk-pci,drive=system-disk"
+            )
+        }
+
+        if (iso != null) {
+            val fileNode = JSONObject()
+                .put("driver", "file")
+                .put("filename", iso.absolutePath)
+                .put("node-name", "installer-iso-file")
+                .put("read-only", true)
+            val imageNode = JSONObject()
+                .put("driver", "raw")
+                .put("file", "installer-iso-file")
+                .put("node-name", "installer-iso")
+                .put("read-only", true)
+            arguments += listOf(
+                "-blockdev", fileNode.toString(),
+                "-blockdev", imageNode.toString(),
+                "-device", "virtio-scsi-pci,id=installer-scsi",
+                "-device", "scsi-cd,drive=installer-iso,bus=installer-scsi.0"
+            )
+        }
+
+        arguments += listOf("-boot", if (iso != null) "order=d,menu=on" else "order=c,menu=on")
+        return arguments
     }
 
     private fun persistOutputTail(tail: BoundedOutputTail) {
