@@ -14,6 +14,8 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
+import android.os.StatFs
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -54,7 +56,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.waizusora.emu.ui.theme.EmuTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +78,193 @@ class MainActivity : ComponentActivity() {
 
 private enum class AppTab(val title: String, val symbol: String) {
     Home("Home", "⌂"), Storage("Storage", "▤"), Settings("Settings", "⚙")
+}
+
+/**
+ * Imports Android document URIs into app-private storage without buffering whole images in RAM.
+ * ISO files are checked for an ISO 9660 primary volume descriptor; disks must be self-contained
+ * QCOW2 images whose metadata can be read by the bundled qemu-img executable.
+ */
+private object MediaImporter {
+    private const val COPY_BUFFER_SIZE = 64 * 1024
+    private const val MAX_DISK_BYTES = 2048L * 1024L * 1024L * 1024L
+
+    suspend fun importIso(context: Context, uri: Uri): File =
+        importFile(context, uri, "isos", "iso", ::validateIso)
+
+    suspend fun importDisk(context: Context, uri: Uri): File =
+        importFile(context, uri, "disks", "qcow2") { file -> validateDisk(context, file) }
+
+    private suspend fun importFile(
+        context: Context,
+        uri: Uri,
+        directoryName: String,
+        extension: String,
+        validate: (File) -> Unit
+    ): File = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val resolver = appContext.contentResolver
+        val metadata = resolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) null else {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                val name = if (nameIndex >= 0 && !cursor.isNull(nameIndex)) {
+                    cursor.getString(nameIndex)
+                } else {
+                    null
+                }
+                val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                    cursor.getLong(sizeIndex)
+                } else {
+                    null
+                }
+                name to size
+            }
+        }
+        val sourceName = metadata?.first ?: uri.lastPathSegment ?: "imported"
+        val declaredSize = metadata?.second
+        val directory = File(appContext.noBackupFilesDir, directoryName)
+        check(directory.exists() || directory.mkdirs()) {
+            "Unable to create private " + directoryName + " directory"
+        }
+
+        val baseName = safeBaseName(sourceName)
+        var destination = File(directory, baseName + "." + extension)
+        var suffix = 1
+        while (destination.exists()) {
+            destination = File(directory, baseName + "-" + suffix + "." + extension)
+            suffix++
+        }
+        val temporary = File(directory, ".import-" + UUID.randomUUID() + ".part")
+
+        try {
+            val input = resolver.openInputStream(uri)
+                ?: error("Android could not open the selected document")
+            var copiedBytes = 0L
+            input.use { source ->
+                FileOutputStream(temporary).use { output ->
+                    val buffer = ByteArray(COPY_BUFFER_SIZE)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        copiedBytes = Math.addExact(copiedBytes, count.toLong())
+                        output.write(buffer, 0, count)
+                    }
+                    output.fd.sync()
+                }
+            }
+            check(copiedBytes > 0L) { "The selected document is empty" }
+            if (declaredSize != null && declaredSize >= 0L) {
+                check(copiedBytes == declaredSize) {
+                    "Imported byte count does not match the document provider's reported size"
+                }
+            }
+            check(temporary.isFile && temporary.length() == copiedBytes) {
+                "The imported file size could not be verified"
+            }
+
+            validate(temporary)
+            check(temporary.renameTo(destination)) {
+                "Unable to publish the verified file in app-private storage"
+            }
+            destination
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
+    }
+
+    private fun safeBaseName(displayName: String): String {
+        val leaf = displayName.substringAfterLast('/').substringAfterLast('\\')
+        val base = leaf.substringBeforeLast('.', leaf)
+            .replace(Regex("[^A-Za-z0-9._-]+"), "-")
+            .trim('.', '-', '_')
+            .take(48)
+        return base.ifBlank { "imported" }
+    }
+
+    private fun validateIso(file: File) {
+        val descriptorOffset = 16L * 2048L
+        check(file.length() >= descriptorOffset + 7L) {
+            "ISO image is too small to contain an ISO 9660 volume descriptor"
+        }
+        RandomAccessFile(file, "r").use { image ->
+            image.seek(descriptorOffset)
+            val descriptor = ByteArray(7)
+            image.readFully(descriptor)
+            val identifier = String(descriptor, 1, 5, Charsets.US_ASCII)
+            check(
+                descriptor[0].toInt() == 1 &&
+                    identifier == "CD001" &&
+                    descriptor[6].toInt() == 1
+            ) {
+                "Selected file does not contain a valid ISO 9660 primary volume descriptor"
+            }
+        }
+    }
+
+    private fun validateDisk(context: Context, file: File) {
+        val binary = QemuRuntime.imageBinary(context)
+        check(binary.isFile && binary.canExecute()) {
+            "Bundled qemu-img is not executable; disk validation is unavailable"
+        }
+        val log = File.createTempFile("qemu-img-import-", ".log", binary.parentFile)
+        var process: Process? = null
+        try {
+            val started = ProcessBuilder(
+                binary.absolutePath,
+                "info",
+                "--output=json",
+                file.absolutePath
+            ).directory(binary.parentFile)
+                .redirectErrorStream(true)
+                .redirectOutput(log)
+                .start()
+            process = started
+            if (!started.waitFor(30, TimeUnit.SECONDS)) {
+                started.destroy()
+                if (!started.waitFor(2, TimeUnit.SECONDS)) {
+                    started.destroyForcibly()
+                    started.waitFor(2, TimeUnit.SECONDS)
+                }
+                error("qemu-img info timed out while validating the imported disk")
+            }
+            val output = log.readText()
+            check(started.exitValue() == 0) {
+                "qemu-img rejected the imported disk (exit " + started.exitValue() +
+                    "): " + output.take(1000)
+            }
+            val metadata = JSONObject(output)
+            check(metadata.optString("format") == "qcow2") {
+                "Only QCOW2 disk images are currently supported for import"
+            }
+            check(metadata.optString("backing-filename").isBlank()) {
+                "QCOW2 images with external backing files cannot be imported"
+            }
+            check(metadata.optString("data-file").isBlank()) {
+                "QCOW2 images with external data files cannot be imported"
+            }
+            val virtualSize = metadata.optLong("virtual-size", -1L)
+            check(virtualSize in 1L..MAX_DISK_BYTES) {
+                "QCOW2 virtual capacity must be between 1 byte and 2048 GiB"
+            }
+            check(file.length() > 0L) { "Imported QCOW2 image is empty" }
+        } finally {
+            process?.let {
+                if (it.isAlive) {
+                    it.destroyForcibly()
+                    it.waitFor(2, TimeUnit.SECONDS)
+                }
+            }
+            log.delete()
+        }
+    }
 }
 
 @Composable
@@ -90,6 +290,7 @@ private fun EmuApp() {
     var diskName by remember { mutableStateOf("linux-disk") }
     var diskSize by remember { mutableStateOf("16") }
     var diskOperationBusy by remember { mutableStateOf(false) }
+    var mediaImportBusy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("No image selected yet.") }
     // Show a one-time onboarding explanation before asking the user to open system permission screens.
     val preferences = remember { context.getSharedPreferences("emu_preferences", Context.MODE_PRIVATE) }
@@ -133,23 +334,49 @@ private fun EmuApp() {
         }
     }
 
-    val isoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    fun importSelectedMedia(uri: Uri, isIso: Boolean) {
+        if (mediaImportBusy) return
+        mediaImportBusy = true
+        notice = if (isIso) "Importing and validating ISO…" else "Importing and validating QCOW2 disk…"
+        coroutineScope.launch {
+            try {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+                val imported = if (isIso) {
+                    MediaImporter.importIso(context, uri)
+                } else {
+                    MediaImporter.importDisk(context, uri)
+                }
+                if (isIso) {
+                    selectedIso = Uri.fromFile(imported)
+                    notice = "ISO imported and validated: " + imported.name +
+                        " (" + imported.length() + " bytes), stored privately."
+                } else {
+                    selectedDisk = Uri.fromFile(imported)
+                    notice = "QCOW2 imported and validated: " + imported.name +
+                        " (" + imported.length() + " bytes), stored privately."
+                }
+                selectedTab = 1
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                notice = (if (isIso) "ISO import failed: " else "Disk import failed: ") +
+                    (error.message ?: error.javaClass.simpleName)
+            } finally {
+                mediaImportBusy = false
             }
-            selectedIso = uri
-            notice = "ISO selected: ${uri.lastPathSegment ?: "installation media"}"
         }
     }
+
+    val isoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importSelectedMedia(uri, true)
+    }
     val diskPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            selectedDisk = uri
-            notice = "Disk selected: ${uri.lastPathSegment ?: "virtual disk"}"
-        }
+        if (uri != null) importSelectedMedia(uri, false)
     }
 
     if (showOnboarding) {
@@ -210,14 +437,16 @@ private fun EmuApp() {
                     session = qemuSession,
                     onStartSession = { QemuSessionService.startPausedProcess(context) },
                     onStopSession = { QemuSessionService.stopProcess(context) },
-                    onChooseIso = { isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
-                    onChooseDisk = { diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
+                    mediaImportBusy = mediaImportBusy,
+                    onChooseIso = { if (!mediaImportBusy) isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
+                    onChooseDisk = { if (!mediaImportBusy) diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                 )
                 AppTab.Storage -> StorageScreen(
                     selectedIso = selectedIso,
                     selectedDisk = selectedDisk,
-                    onChooseIso = { isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
-                    onChooseDisk = { diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
+                    mediaImportBusy = mediaImportBusy,
+                    onChooseIso = { if (!mediaImportBusy) isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
+                    onChooseDisk = { if (!mediaImportBusy) diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                 )
                 AppTab.Settings -> if (showOpenSourceNotices) {
                     OpenSourceNoticesScreen(onBack = { showOpenSourceNotices = false })
@@ -275,6 +504,7 @@ private fun HomeScreen(
     runtimeAvailable: Boolean,
     runtimeInitialized: Boolean,
     session: QemuSessionSnapshot,
+    mediaImportBusy: Boolean,
     onStartSession: () -> Unit,
     onStopSession: () -> Unit,
     onChooseIso: () -> Unit,
@@ -295,8 +525,16 @@ private fun HomeScreen(
                     Text("Virtual machines", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text("No virtual machines yet", style = MaterialTheme.typography.titleMedium)
                     Text("Select installation media and a virtual disk to prepare a guest system.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = onChooseIso, modifier = Modifier.fillMaxWidth()) { Text("Choose installation ISO") }
-                    OutlinedButton(onClick = onChooseDisk, modifier = Modifier.fillMaxWidth()) { Text("Choose QCOW2 disk") }
+                    Button(
+                        onClick = onChooseIso,
+                        enabled = !mediaImportBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (mediaImportBusy) "Importing media…" else "Choose installation ISO") }
+                    OutlinedButton(
+                        onClick = onChooseDisk,
+                        enabled = !mediaImportBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Choose QCOW2 disk") }
                 }
             }
         }
@@ -361,6 +599,7 @@ private fun HomeScreen(
 private fun StorageScreen(
     selectedIso: Uri?,
     selectedDisk: Uri?,
+    mediaImportBusy: Boolean,
     onChooseIso: () -> Unit,
     onChooseDisk: () -> Unit
 ) {
@@ -373,7 +612,11 @@ private fun StorageScreen(
                 Text("Installation media", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(selectedIso?.lastPathSegment ?: "No ISO selected", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("ISO images are used to boot an installer or live environment.")
-                OutlinedButton(onClick = onChooseIso, modifier = Modifier.fillMaxWidth()) { Text("Choose ISO file") }
+                OutlinedButton(
+                    onClick = onChooseIso,
+                    enabled = !mediaImportBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (mediaImportBusy) "Importing…" else "Import ISO file") }
             }
         }
         Card(shape = RoundedCornerShape(20.dp)) {
@@ -381,7 +624,11 @@ private fun StorageScreen(
                 Text("Virtual hard disk", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(selectedDisk?.lastPathSegment ?: "No QCOW2 selected", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("QCOW2 files store the guest operating system and data.")
-                OutlinedButton(onClick = onChooseDisk, modifier = Modifier.fillMaxWidth()) { Text("Choose QCOW2 file") }
+                OutlinedButton(
+                    onClick = onChooseDisk,
+                    enabled = !mediaImportBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Import QCOW2 file") }
             }
         }
     }
