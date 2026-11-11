@@ -23,7 +23,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
-      native: ${{ steps.filter.outputs.native }}
+      # Rebuild QEMU when native inputs change or no retained ABI artifacts can be reused.
+      native: ${{ steps.filter.outputs.native == 'true' || steps.runtime-artifacts.outputs.reusable != 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,6 +41,29 @@ jobs:
               - 'native/**'
               - 'app/src/main/cpp/**'
               - '.github/workflows/ci.yml'
+
+      - name: Check reusable QEMU runtime artifacts
+        id: runtime-artifacts
+        if: steps.filter.outputs.native != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          reusable=false
+          while IFS= read -r candidate; do
+            [[ -z "$candidate" ]] && continue
+            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate/artifacts" --jq '[.artifacts[] | select(.expired == false) | .name]' 2>/dev/null || echo '[]')"
+            if jq -e 'index("emu-qemu-9.2.0-arm64-v8a") != null and index("emu-qemu-9.2.0-x86_64") != null' <<< "$artifacts" >/dev/null; then
+              reusable=true
+              echo "Reusable QEMU ABI artifacts found in workflow run $candidate"
+              break
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=30" --jq '.workflow_runs[].id')
+          echo "reusable=$reusable" >> "$GITHUB_OUTPUT"
+          if [[ "$reusable" != true ]]; then
+            echo "No retained QEMU ABI artifacts found; native dependency build will run."
+          fi
 
   build:
     name: Build Android debug APK and verify JNI ABIs
