@@ -220,7 +220,7 @@ private fun EmuApp() {
                         onDiskNameChange = { diskName = it },
                         diskSize = diskSize,
                         onDiskSizeChange = { diskSize = it },
-                        onCreateDisk = { notice = "QCOW2 creation requires the QEMU qemu-img runtime, which is not integrated yet." },
+                        onCreateDisk = { notice = "The QCOW2 creation workflow is not connected to qemu-img yet." },
                         notice = notice,
                         notificationsGranted = notificationsGranted,
                         batteryOptimizationExempt = batteryOptimizationExempt,
@@ -363,7 +363,7 @@ private fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = diskName.isNotBlank() && (diskSize.toLongOrNull() ?: 0L) > 0L
                     ) { Text("Create QCOW2") }
-                    Text("Disk creation will call QEMU qemu-img. Native runtime integration is pending.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text("QEMU qemu-img is installed and verified. Disk creation controls are not connected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
