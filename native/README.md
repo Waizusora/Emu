@@ -374,3 +374,14 @@ ABI-specific sysroot and requires `glib-2.0`, `pixman-1`, and `zlib`.
 
 The wrapper is generated under the ignored `.work/toolchain` directory and
 is not committed as a generated build artifact.
+
+
+The verifier also asks Ninja for each output target's own command graph rather
+than searching the entire build file. Both executables link the ABI-specific
+static GLib stack, libffi, PCRE2, and the sysroot's shared zlib library.
+The QEMU system emulator additionally links static Pixman; qemu-img does not.
+The link commands also reference the pinned Android NDK's compiler runtime
+(`libatomic.a`) and Android platform libraries. Keep the exact NDK revision
+(27.2.12479018), matching sysroot, build tree, and corresponding source bundle
+together when preparing a relink. This records the observed link inputs; it
+does not itself establish a complete or legally sufficient relink procedure.
