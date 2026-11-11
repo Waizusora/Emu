@@ -28,7 +28,7 @@ esac
   echo "ERROR: ANDROID_API must be an integer >= 28" >&2
   exit 2
 }
-[[ -n "$NDK" && -d "$NDK/build/cmake/android.toolchain.cmake" ]] || {
+[[ -n "$NDK" && -f "$NDK/build/cmake/android.toolchain.cmake" ]] || {
   echo "ERROR: set ANDROID_NDK_HOME to an Android NDK installation" >&2
   exit 2
 }
