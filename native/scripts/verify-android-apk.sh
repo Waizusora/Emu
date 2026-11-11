@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Verify that the generated APK contains the JNI bridge for every supported ABI.
-# This checks packaging only; it does not claim that the QEMU engine is present.
+# Verify APK JNI bridges, QEMU executables, ELF metadata, checksums, and notices.
 set -euo pipefail
 
-APK="${1:-app/build/outputs/apk/debug/app-debug.apk}"
+APK="\${1:-app/build/outputs/apk/debug/app-debug.apk}"
 
-# Fail with a clear message if the APK or unzip utility is unavailable.
 if [[ ! -f "$APK" ]]; then
   echo "ERROR: APK not found: $APK" >&2
   exit 2
@@ -15,7 +13,6 @@ command -v unzip >/dev/null 2>&1 || {
   exit 2
 }
 
-# Read the archive index once and confirm the native bridge for each ABI.
 CONTENTS="$(unzip -Z1 "$APK")"
 for ABI in arm64-v8a x86_64; do
   LIBRARY="lib/$ABI/libemu-qemu.so"
@@ -26,10 +23,10 @@ for ABI in arm64-v8a x86_64; do
   echo "OK: $LIBRARY"
 done
 
-# Require license texts and attribution inventory to be present in the installed APK.
 for LICENSE_ASSET in \
   assets/licenses/mit.txt \
   assets/licenses/apache-2.0.txt \
+  assets/licenses/gpl-2.0.txt \
   assets/licenses/NOTICE.txt; do
   if ! grep -Fqx "$LICENSE_ASSET" <<< "$CONTENTS"; then
     echo "ERROR: APK is missing $LICENSE_ASSET" >&2
@@ -38,33 +35,81 @@ for LICENSE_ASSET in \
   echo "OK: $LICENSE_ASSET"
 done
 
-echo "APK ABI and open-source notice packaging verification passed: $APK"
-
-# Confirm that the real QEMU executables, not only the JNI bridge, are packaged.
 python3 - "$APK" <<'PY'
+import hashlib
+import re
 import struct
 import sys
 import zipfile
 
 apk = sys.argv[1]
-expected = {"arm64-v8a": 183, "x86_64": 62}
+expected_machines = {"arm64-v8a": 183, "x86_64": 62}
+executables = {"qemu-system-aarch64", "qemu-img"}
+
 with zipfile.ZipFile(apk) as archive:
     names = set(archive.namelist())
-    for abi, machine in expected.items():
-        for executable in ("qemu-system-aarch64", "qemu-img"):
-            path = f"assets/qemu/{abi}/{executable}"
-            if path not in names:
-                raise SystemExit(f"ERROR: APK is missing {path}")
-            with archive.open(path) as stream:
-                header = stream.read(20)
-            if len(header) != 20 or header[:4] != bytes([0x7f]) + b"ELF":
-                raise SystemExit(f"ERROR: invalid ELF header in {path}")
-            actual_machine = struct.unpack_from("<H", header, 18)[0]
-            if actual_machine != machine:
-                raise SystemExit(
-                    f"ERROR: {path} has ELF machine {actual_machine}, expected {machine}"
-                )
-            print(f"OK: {path} (ELF machine {machine})")
-PY
+    for abi, expected_machine in expected_machines.items():
+        manifest_path = "assets/qemu/" + abi + "/SHA256SUMS"
+        if manifest_path not in names:
+            raise SystemExit("ERROR: APK is missing " + manifest_path)
 
-echo "APK QEMU runtime packaging verification passed: $APK"
+        manifest = {}
+        for line in archive.read(manifest_path).decode("ascii").splitlines():
+            match = re.fullmatch(r"([0-9a-f]{64})  (?:\*)?([A-Za-z0-9._-]+)", line)
+            if not match:
+                raise SystemExit("ERROR: malformed checksum entry in " + manifest_path + ": " + repr(line))
+            digest, filename = match.groups()
+            if filename in manifest:
+                raise SystemExit("ERROR: duplicate checksum for " + abi + "/" + filename)
+            manifest[filename] = digest
+        if set(manifest) != executables:
+            raise SystemExit("ERROR: checksum manifest has unexpected entries for " + abi)
+
+        for executable in sorted(executables):
+            path = "assets/qemu/" + abi + "/" + executable
+            if path not in names:
+                raise SystemExit("ERROR: APK is missing " + path)
+            data = archive.read(path)
+            actual_sha256 = hashlib.sha256(data).hexdigest()
+            if actual_sha256 != manifest[executable]:
+                raise SystemExit("ERROR: SHA-256 mismatch for " + path)
+
+            if len(data) < 64 or data[:4] != b"\x7fELF":
+                raise SystemExit("ERROR: invalid ELF header in " + path)
+            if data[4] != 2 or data[5] != 1:
+                raise SystemExit("ERROR: " + path + " is not a 64-bit little-endian ELF")
+            elf_type = struct.unpack_from("<H", data, 16)[0]
+            machine = struct.unpack_from("<H", data, 18)[0]
+            if elf_type != 3:
+                raise SystemExit("ERROR: " + path + " is not a position-independent executable")
+            if machine != expected_machine:
+                raise SystemExit(
+                    "ERROR: " + path + " has ELF machine " + str(machine) +
+                    ", expected " + str(expected_machine)
+                )
+
+            phoff = struct.unpack_from("<Q", data, 32)[0]
+            phentsize = struct.unpack_from("<H", data, 54)[0]
+            phnum = struct.unpack_from("<H", data, 56)[0]
+            if phentsize < 56 or phoff + phentsize * phnum > len(data):
+                raise SystemExit("ERROR: invalid ELF program-header table in " + path)
+            interpreter = None
+            for index in range(phnum):
+                offset = phoff + index * phentsize
+                p_type, _, p_offset, _, _, p_filesz, _, _ = struct.unpack_from(
+                    "<IIQQQQQQ", data, offset
+                )
+                if p_type == 3:
+                    if p_offset + p_filesz > len(data):
+                        raise SystemExit("ERROR: invalid PT_INTERP segment in " + path)
+                    interpreter = data[p_offset:p_offset + p_filesz].split(b"\0", 1)[0].decode()
+                    break
+            if interpreter != "/system/bin/linker64":
+                raise SystemExit(
+                    "ERROR: " + path + " uses interpreter " + repr(interpreter) +
+                    ", expected /system/bin/linker64"
+                )
+            print("OK: " + path + " (ELF machine " + str(machine) + ", SHA-256 verified, Android linker)")
+
+print("APK QEMU runtime packaging, checksum, and ELF verification passed.")
+PY
