@@ -19,13 +19,29 @@ Copyright: JetBrains s.r.o. and Kotlin Programming Language contributors.
 License: Apache License 2.0
 License text: licenses/apache-2.0.txt
 
-NOT INCLUDED IN THIS APK
+QEMU 9.2.0
+Description: qemu-system-aarch64 and qemu-img executables bundled in this APK
+for arm64-v8a and x86_64. Both are built for Android API 28 or later.
+Copyright: QEMU contributors; see the corresponding source bundle for
+the complete upstream copyright notices.
+License: GNU General Public License, version 2 (GPL-2.0).
+License text: licenses/gpl-2.0.txt
+Packaged executables:
+  assets/qemu/arm64-v8a/qemu-system-aarch64
+  assets/qemu/arm64-v8a/qemu-img
+  assets/qemu/x86_64/qemu-system-aarch64
+  assets/qemu/x86_64/qemu-img
+Integrity manifests:
+  assets/qemu/{abi}/SHA256SUMS
+Corresponding source:
+  The CI run producing this APK also publishes the
+  emu-qemu-9.2.0-corresponding-source artifact and its .sha256 sidecar.
+  It contains QEMU 9.2.0 source, pinned dependency source trees,
+  repository patches, build scripts, and source/license manifests.
 
-QEMU 9.2.0 is cross-built by CI for arm64-v8a and x86_64 as separate artifacts.
-The qemu-system-aarch64 and qemu-img binaries are not currently packaged in
-this APK. QEMU is licensed under GPL-2.0. When QEMU is bundled, its license,
-corresponding source, and all licenses/notices for dependencies incorporated
-into the shipped QEMU binaries must be added to this catalog.
+QEMU executables dynamically link only Android public system libraries:
+libc.so, libm.so, libdl.so, and libz.so. These operating-system libraries
+are not copied into the APK as private shared-library dependencies.
 
 Build tools and host-only dependencies are intentionally excluded from this
 APK inventory. Android platform APIs are provided by the operating system and
