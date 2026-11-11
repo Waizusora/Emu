@@ -142,6 +142,7 @@ jobs:
             # Bind the manifest to the exact executables staged into the APK.
             (cd "$destination" && sha256sum qemu-system-aarch64 qemu-img > SHA256SUMS)
             chmod 0644 "$destination/SHA256SUMS"
+            (cd "$destination" && sha256sum --check SHA256SUMS)
           done
 
       - name: Build debug APK for configured Android ABIs
