@@ -10,6 +10,8 @@ DEPS_SOURCE_ROOT="${NATIVE_DEPS_SOURCE_ROOT:-$ROOT/.work/deps/src}"
 OUTPUT_DIR="${QEMU_SOURCE_BUNDLE_DIR:-$ROOT/.work/source-bundle}"
 STAGING_DIR="$OUTPUT_DIR/staging"
 ARCHIVE="$OUTPUT_DIR/emu-qemu-9.2.0-corresponding-source.tar.xz"
+ARCHIVE_NAME="$(basename "$ARCHIVE")"
+CHECKSUM_NAME="$ARCHIVE_NAME.sha256"
 
 # Require every source tree consumed by the pinned Android dependency build.
 required_paths=(
@@ -83,6 +85,12 @@ tar --exclude-vcs -C "$ROOT" -cf - \
 mkdir -p "$OUTPUT_DIR"
 tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
   -C "$STAGING_DIR" -cJf "$ARCHIVE" .
-sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+
+# Write a relocatable checksum sidecar and verify it before publishing the bundle.
+(
+  cd "$OUTPUT_DIR"
+  sha256sum "$ARCHIVE_NAME" > "$CHECKSUM_NAME"
+  sha256sum --check "$CHECKSUM_NAME"
+)
 echo "Created corresponding-source archive: $ARCHIVE"
-echo "Archive checksum: $ARCHIVE.sha256"
+echo "Archive checksum: $OUTPUT_DIR/$CHECKSUM_NAME"
