@@ -69,10 +69,12 @@ private fun EmuApp() {
     val context = LocalContext.current
     var runtimeAvailable by remember { mutableStateOf(false) }
     var runtimeStatus by remember { mutableStateOf("Preparing QEMU 9.2.0 runtime…") }
+    var runtimeInitialized by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val runtime = QemuRuntime.initialize(context)
         runtimeAvailable = runtime.available
         runtimeStatus = runtime.status
+        runtimeInitialized = true
     }
     var selectedTab by remember { mutableIntStateOf(0) }
     // Keep the notices page inside Settings so users can return without changing app navigation.
@@ -198,6 +200,7 @@ private fun EmuApp() {
                     notice = notice,
                     runtimeStatus = runtimeStatus,
                     runtimeAvailable = runtimeAvailable,
+                    runtimeInitialized = runtimeInitialized,
                     onChooseIso = { isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
                     onChooseDisk = { diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                 )
@@ -237,6 +240,7 @@ private fun HomeScreen(
     notice: String,
     runtimeStatus: String,
     runtimeAvailable: Boolean,
+    runtimeInitialized: Boolean,
     onChooseIso: () -> Unit,
     onChooseDisk: () -> Unit
 ) {
@@ -270,7 +274,15 @@ private fun HomeScreen(
             }
         }
         item {
-            Text(if (runtimeAvailable) "QEMU 9.2.0 · TCG ready" else "QEMU 9.2.0 · runtime unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            Text(
+                when {
+                    !runtimeInitialized -> "QEMU 9.2.0 · checking runtime"
+                    runtimeAvailable -> "QEMU 9.2.0 · runtime verified"
+                    else -> "QEMU 9.2.0 · runtime unavailable"
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium
+            )
             Text(runtimeStatus, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
