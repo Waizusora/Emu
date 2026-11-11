@@ -205,7 +205,7 @@ jobs:
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
           for abi in arm64-v8a x86_64; do
-            message="$(unzip -p "$apk" "lib/$abi/libemu-qemu.so" | strings | grep -F "SDL2 2.30.12 is linked" || true)"
+            message="$(unzip -p "$apk" "lib/$abi/libemu-qemu.so" | strings | grep -F "SDL2 %u.%u.%u is linked" || true)"
             if [[ -z "$message" ]]; then
               echo "ERROR: SDL2 link marker missing from $abi JNI library" >&2
               exit 1
