@@ -139,6 +139,8 @@ jobs:
             mkdir -p "$destination"
             install -m 0755 ".work/qemu/$abi/qemu-system-aarch64" "$destination/qemu-system-aarch64"
             install -m 0755 ".work/qemu/$abi/qemu-img" "$destination/qemu-img"
+            (cd "$destination" && sha256sum qemu-system-aarch64 qemu-img > SHA256SUMS)
+            chmod 0644 "$destination/SHA256SUMS"
           done
 
       - name: Build debug APK for configured Android ABIs
