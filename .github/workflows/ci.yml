@@ -273,6 +273,22 @@ jobs:
       - name: Build and verify Android dependency sysroot
         run: bash native/scripts/build-android-deps.sh "${{ matrix.abi }}"
 
+      - name: Build pinned SDL2 for Android
+        env:
+          QEMU_ANDROID_SYSROOT: ${{ github.workspace }}/.work/sysroots/${{ matrix.abi }}
+        run: bash native/scripts/build-sdl2-android.sh "${{ matrix.abi }}"
+
+      - name: Verify and upload SDL2 Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: emu-sdl2-2.30.12-${{ matrix.abi }}
+          path: |
+            .work/sysroots/${{ matrix.abi }}/usr/lib/libSDL2.a
+            .work/sysroots/${{ matrix.abi }}/usr/include/SDL2/
+            .work/sysroots/${{ matrix.abi }}/share/SDL2/android-java/
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Fetch pinned QEMU source
         run: bash native/scripts/fetch-qemu.sh
 
