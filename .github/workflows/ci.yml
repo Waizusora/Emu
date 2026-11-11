@@ -17,38 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect-native-changes:
-    # Detect native source changes without running expensive builds on every push.
-    runs-on: ubuntu-latest
-    outputs:
-      native: ${{ steps.filter.outputs.native }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Full history lets the filter compare the correct base and head commits.
-          fetch-depth: 0
-
-      - name: Detect native dependency inputs
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          # Compare pushes with the event's actual previous commit; comparing against
-          # the last failed run can otherwise hide the same native changes on a retry.
-          base: ${{ github.event.before }}
-          # Changes to the native scripts or this workflow can affect sysroot builds.
-          filters: |
-            native:
-              # Any native source, pin, patch, build script, or native documentation
-              # change should exercise the complete ABI matrix rather than silently skip it.
-              - 'native/**'
-              # Keep JNI/CMake integration changes coupled to native build validation.
-              - 'app/src/main/cpp/**'
-              - '.github/workflows/ci.yml'
-
   build:
     name: Build Android debug APK and verify JNI ABIs
-    needs: [detect-native-changes, native-dependencies]
+    needs: native-dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -157,9 +128,7 @@ jobs:
           retention-days: 7
 
   native-dependencies:
-    # Run manually or automatically when native build inputs change.
-    needs: detect-native-changes
-    if: ${{ always() }}
+    # Build both native ABIs for every APK so the packaged app always has its matching QEMU runtime.
     name: Build native dependency sysroot (${{ matrix.abi }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
