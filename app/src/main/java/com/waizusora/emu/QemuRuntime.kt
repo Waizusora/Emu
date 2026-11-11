@@ -30,7 +30,7 @@ object QemuRuntime {
                 it == "arm64-v8a" || it == "x86_64"
             } ?: error("This device ABI is not supported by the bundled QEMU runtime")
 
-            val runtimeDirectory = File(context.noBackupFilesDir, "qemu/$abi")
+            val runtimeDirectory = File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/$abi")
             check(runtimeDirectory.exists() || runtimeDirectory.mkdirs()) {
                 "Unable to create the private QEMU runtime directory"
             }
@@ -66,10 +66,10 @@ object QemuRuntime {
     }
 
     fun systemBinary(context: Context): File =
-        File(context.noBackupFilesDir, "qemu/${currentAbi()}/qemu-system-aarch64")
+        File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-system-aarch64")
 
     fun imageBinary(context: Context): File =
-        File(context.noBackupFilesDir, "qemu/${currentAbi()}/qemu-img")
+        File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-img")
 
     private fun currentAbi(): String =
         Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
@@ -79,6 +79,10 @@ object QemuRuntime {
         val destination = File(directory, name)
         val temporary = File(directory, "$name.tmp")
         context.assets.open("qemu/$abi/$name").use { input ->
+            val expectedSize = input.available().toLong()
+            if (destination.isFile && destination.length() == expectedSize && destination.canExecute()) {
+                return destination
+            }
             FileOutputStream(temporary).use { output -> input.copyTo(output) }
         }
         check(temporary.setExecutable(true, true)) { "Unable to mark $name executable" }

@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 
@@ -17,9 +18,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-native-changes:
+    # Rebuild QEMU only when its source, build scripts, or native integration changes.
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect native dependency inputs
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.event.before }}
+          filters: |
+            native:
+              - 'native/**'
+              - 'app/src/main/cpp/**'
+              - '.github/workflows/ci.yml'
+
   build:
     name: Build Android debug APK and verify JNI ABIs
-    needs: native-dependencies
+    needs: [detect-native-changes, native-dependencies]
+    if: ${{ always() && (needs.detect-native-changes.result == 'success' || github.event_name == 'workflow_dispatch') && (needs.native-dependencies.result == 'success' || needs.native-dependencies.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -63,17 +88,47 @@ jobs:
             bash -n "${script}"
           done < <(find native/scripts -maxdepth 1 -type f -name '*.sh' -print0)
 
+      - name: Resolve QEMU runtime artifact run
+        id: qemu-artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ needs.native-dependencies.result }}" == "success" ]]; then
+            echo "run_id=$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Reuse the latest successful main-branch native build for app-only changes.
+          while IFS= read -r candidate; do
+            [[ -z "$candidate" || "$candidate" == "$GITHUB_RUN_ID" ]] && continue
+            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate/artifacts" --jq '[.artifacts[] | select(.expired == false) | .name]')"
+            if jq -e 'index("emu-qemu-9.2.0-arm64-v8a") != null and index("emu-qemu-9.2.0-x86_64") != null' <<< "$artifacts" >/dev/null; then
+              echo "run_id=$candidate" >> "$GITHUB_OUTPUT"
+              echo "Reusing QEMU runtime artifacts from workflow run $candidate"
+              exit 0
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=30" --jq '.workflow_runs[].id')
+
+          echo "ERROR: no unexpired successful QEMU ABI artifacts were found; run Android CI manually to rebuild them." >&2
+          exit 1
+
       - name: Download QEMU runtime for arm64-v8a
         uses: actions/download-artifact@v4
         with:
           name: emu-qemu-9.2.0-arm64-v8a
           path: .work/qemu/arm64-v8a
+          run-id: ${{ steps.qemu-artifacts.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download QEMU runtime for x86_64
         uses: actions/download-artifact@v4
         with:
           name: emu-qemu-9.2.0-x86_64
           path: .work/qemu/x86_64
+          run-id: ${{ steps.qemu-artifacts.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Stage ABI-specific QEMU runtime assets
         shell: bash
@@ -128,7 +183,8 @@ jobs:
           retention-days: 7
 
   native-dependencies:
-    # Build both native ABIs for every APK so the packaged app always has its matching QEMU runtime.
+    needs: detect-native-changes
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.detect-native-changes.outputs.native == 'true') }}
     name: Build native dependency sysroot (${{ matrix.abi }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
