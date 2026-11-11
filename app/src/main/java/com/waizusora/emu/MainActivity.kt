@@ -47,12 +47,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.waizusora.emu.ui.theme.EmuTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,6 +70,7 @@ private enum class AppTab(val title: String, val symbol: String) {
 @Composable
 private fun EmuApp() {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var runtimeAvailable by remember { mutableStateOf(false) }
     var runtimeStatus by remember { mutableStateOf("Preparing QEMU 9.2.0 runtime…") }
     var runtimeInitialized by remember { mutableStateOf(false) }
@@ -86,6 +89,7 @@ private fun EmuApp() {
     var orientationLock by remember { mutableStateOf(false) }
     var diskName by remember { mutableStateOf("linux-disk") }
     var diskSize by remember { mutableStateOf("16") }
+    var diskOperationBusy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("No image selected yet.") }
     // Show a one-time onboarding explanation before asking the user to open system permission screens.
     val preferences = remember { context.getSharedPreferences("emu_preferences", Context.MODE_PRIVATE) }
@@ -225,7 +229,31 @@ private fun EmuApp() {
                         onDiskNameChange = { diskName = it },
                         diskSize = diskSize,
                         onDiskSizeChange = { diskSize = it },
-                        onCreateDisk = { notice = "The QCOW2 creation workflow is not connected to qemu-img yet." },
+                        onCreateDisk = {
+                            val capacityGb = diskSize.toLongOrNull()
+                            if (!runtimeInitialized || !runtimeAvailable) {
+                                notice = "QEMU runtime is not ready; QCOW2 creation is disabled."
+                            } else if (capacityGb == null || capacityGb !in 1L..2048L) {
+                                notice = "Disk capacity must be between 1 and 2048 GB."
+                            } else if (!diskOperationBusy) {
+                                diskOperationBusy = true
+                                notice = "Creating and verifying QCOW2 image…"
+                                coroutineScope.launch {
+                                    try {
+                                        val image = QemuRuntime.createDiskImage(context, diskName, capacityGb)
+                                        selectedDisk = Uri.fromFile(image)
+                                        notice = "QCOW2 created and verified: ${image.name} (${capacityGb} GB virtual capacity). Stored in app-private storage."
+                                        selectedTab = 1
+                                    } catch (error: Exception) {
+                                        notice = "QCOW2 creation failed: ${error.message ?: error.javaClass.simpleName}"
+                                    } finally {
+                                        diskOperationBusy = false
+                                    }
+                                }
+                            }
+                        },
+                        diskOperationBusy = diskOperationBusy,
+                        runtimeAvailable = runtimeInitialized && runtimeAvailable,
                         notice = notice,
                         notificationsGranted = notificationsGranted,
                         batteryOptimizationExempt = batteryOptimizationExempt,
@@ -368,6 +396,8 @@ private fun SettingsScreen(
     diskSize: String,
     onDiskSizeChange: (String) -> Unit,
     onCreateDisk: () -> Unit,
+    diskOperationBusy: Boolean,
+    runtimeAvailable: Boolean,
     notice: String,
     notificationsGranted: Boolean,
     batteryOptimizationExempt: Boolean,
@@ -402,9 +432,17 @@ private fun SettingsScreen(
                     Button(
                         onClick = onCreateDisk,
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = diskName.isNotBlank() && (diskSize.toLongOrNull() ?: 0L) > 0L
-                    ) { Text("Create QCOW2") }
-                    Text("QEMU qemu-img is installed and verified. Disk creation controls are not connected yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        enabled = runtimeAvailable && !diskOperationBusy &&
+                            Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,47}").matches(diskName.trim()) &&
+                            (diskSize.toLongOrNull() ?: 0L) in 1L..2048L
+                    ) {
+                        Text(if (diskOperationBusy) "Creating QCOW2…" else "Create QCOW2")
+                    }
+                    Text(
+                        "Creates a sparse QCOW2 image with qemu-img, verifies its format and virtual capacity, then stores it in app-private storage. Capacity: 1–2048 GB.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
