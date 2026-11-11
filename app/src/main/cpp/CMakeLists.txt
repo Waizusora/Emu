@@ -19,4 +19,18 @@ set_target_properties(SDL2::SDL2 PROPERTIES
 add_library(emu-qemu SHARED qemu_jni.cpp)
 target_compile_features(emu-qemu PRIVATE cxx_std_17)
 target_compile_options(emu-qemu PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(emu-qemu PRIVATE SDL2::SDL2 android log)
+
+# SDL2's Android static build contains OpenGL ES render backends and Android
+# audio backends. Static archives do not propagate these system dependencies,
+# so declare them explicitly on the final JNI shared-library link.
+target_link_libraries(emu-qemu PRIVATE
+    SDL2::SDL2
+    GLESv1_CM
+    GLESv2
+    EGL
+    OpenSLES
+    android
+    log
+    dl
+    m
+)
