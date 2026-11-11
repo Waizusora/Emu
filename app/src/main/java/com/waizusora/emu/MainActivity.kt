@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,6 +71,7 @@ private fun EmuApp() {
     var runtimeAvailable by remember { mutableStateOf(false) }
     var runtimeStatus by remember { mutableStateOf("Preparing QEMU 9.2.0 runtime…") }
     var runtimeInitialized by remember { mutableStateOf(false) }
+    val qemuSession by QemuSessionState.state.collectAsState()
     LaunchedEffect(Unit) {
         val runtime = QemuRuntime.initialize(context)
         runtimeAvailable = runtime.available
@@ -201,6 +203,9 @@ private fun EmuApp() {
                     runtimeStatus = runtimeStatus,
                     runtimeAvailable = runtimeAvailable,
                     runtimeInitialized = runtimeInitialized,
+                    session = qemuSession,
+                    onStartSession = { QemuSessionService.startPausedProcess(context) },
+                    onStopSession = { QemuSessionService.stopProcess(context) },
                     onChooseIso = { isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
                     onChooseDisk = { diskPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                 )
@@ -241,6 +246,9 @@ private fun HomeScreen(
     runtimeStatus: String,
     runtimeAvailable: Boolean,
     runtimeInitialized: Boolean,
+    session: QemuSessionSnapshot,
+    onStartSession: () -> Unit,
+    onStopSession: () -> Unit,
     onChooseIso: () -> Unit,
     onChooseDisk: () -> Unit
 ) {
@@ -284,6 +292,39 @@ private fun HomeScreen(
                 style = MaterialTheme.typography.labelMedium
             )
             Text(runtimeStatus, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Card(shape = RoundedCornerShape(20.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("QEMU process", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        session.detail,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    when (session.phase) {
+                        QemuSessionPhase.STOPPED, QemuSessionPhase.FAILED -> Button(
+                            onClick = onStartSession,
+                            enabled = runtimeInitialized && runtimeAvailable,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(if (session.phase == QemuSessionPhase.FAILED) "Retry QEMU process" else "Start QEMU paused (no guest)") }
+                        QemuSessionPhase.RUNNING -> OutlinedButton(
+                            onClick = onStopSession,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Stop QEMU") }
+                        QemuSessionPhase.STARTING -> Text("Starting QEMU…")
+                        QemuSessionPhase.STOPPING -> Text("Stopping QEMU…")
+                    }
+                    Text(
+                        "This lifecycle check starts QEMU with its virtual CPU paused and no guest media. It does not boot Linux.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
     }
 }
