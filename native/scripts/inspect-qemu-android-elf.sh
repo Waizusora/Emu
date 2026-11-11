@@ -94,12 +94,12 @@ for name in qemu-system-aarch64 qemu-img; do
   # Verify that the published executable is stripped without removing the
   # dynamic symbol table Android's runtime linker may need.
   sections="$("$READELF" --sections --wide "$binary")"
-  if grep -Eq '\\.debug_[^[:space:]]*|\\.gnu_debuglink|\\.symtab([[:space:]]|$)' <<< "$sections"; then
+  if grep -Eq '\.debug_[^[:space:]]*|\.gnu_debuglink|\.symtab([[:space:]]|$)' <<< "$sections"; then
     echo "ERROR: $name still contains debug or non-dynamic symbol sections" >&2
-    grep -E '\\.debug_[^[:space:]]*|\\.gnu_debuglink|\\.symtab([[:space:]]|$)' <<< "$sections" >&2
+    grep -E '\.debug_[^[:space:]]*|\.gnu_debuglink|\.symtab([[:space:]]|$)' <<< "$sections" >&2
     exit 1
   fi
-  grep -Eq '\\.dynsym([[:space:]]|$)' <<< "$sections" || {
+  grep -Eq '\.dynsym([[:space:]]|$)' <<< "$sections" || {
     echo "ERROR: $name is missing its dynamic symbol table after stripping" >&2
     exit 1
   }
