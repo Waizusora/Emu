@@ -16,11 +16,13 @@ CHECKSUM_NAME="$ARCHIVE_NAME.sha256"
 # Require every source tree consumed by the pinned Android dependency build.
 required_paths=(
   "$QEMU_SOURCE_DIR/COPYING"
-  "$DEPS_SOURCE_ROOT/zlib-1.3.1"
+  "$DEPS_SOURCE_ROOT/zlib-1.3.1/LICENSE"
   "$DEPS_SOURCE_ROOT/libffi-3.4.6/LICENSE"
   "$DEPS_SOURCE_ROOT/pcre2-10.44/LICENCE"
-  "$DEPS_SOURCE_ROOT/glib-2.82.4/COPYING"
-  "$DEPS_SOURCE_ROOT/pixman-0.44.2"
+  "$DEPS_SOURCE_ROOT/glib-2.82.4/LICENSES/LGPL-2.1-or-later.txt"
+  "$DEPS_SOURCE_ROOT/glib-2.82.4/subprojects/gvdb/COPYING"
+  "$DEPS_SOURCE_ROOT/glib-2.82.4/subprojects/proxy-libintl/COPYING"
+  "$DEPS_SOURCE_ROOT/pixman-0.44.2/COPYING"
   "$ROOT/native/qemu-source.lock"
   "$ROOT/native/patches"
   "$ROOT/native/scripts"
@@ -30,15 +32,11 @@ for path in "${required_paths[@]}"; do
     echo "ERROR: corresponding source input is missing: $path" >&2
     exit 1
   }
+  if [[ -f "$path" && ! -s "$path" ]]; then
+    echo "ERROR: required license/source marker is empty: $path" >&2
+    exit 1
+  fi
 done
-
-# Pixman release archives may name their license COPYING or COPYING.LIB.
-if ! find "$DEPS_SOURCE_ROOT/pixman-0.44.2" -maxdepth 2 -type f \
-    \( -iname 'copying' -o -iname 'copying.lib' -o -iname 'license*' \) \
-    -print -quit | grep -q .; then
-  echo "ERROR: Pixman source tree contains no recognizable license file" >&2
-  exit 1
-fi
 
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
@@ -53,6 +51,47 @@ tar --exclude-vcs -C "$ROOT" -cf - \
   .work/deps/src/glib-2.82.4 \
   .work/deps/src/pixman-0.44.2 \
   | tar -C "$STAGING_DIR" -xf -
+
+# Add a concise license locator alongside the complete upstream license texts.
+cat > "$STAGING_DIR/THIRD-PARTY-NOTICES.txt" <<'NOTICES'
+Emu Android QEMU native build — third-party license locator
+
+The source trees below are included in this archive. The listed files are
+the authoritative license texts shipped with the corresponding source.
+
+QEMU 9.2.0
+  License: GNU General Public License, version 2
+  Text: .work/qemu/COPYING
+
+zlib 1.3.1
+  License: zlib license
+  Text: .work/deps/src/zlib-1.3.1/LICENSE
+
+libffi 3.4.6
+  License: MIT-style license (see upstream text for full terms)
+  Text: .work/deps/src/libffi-3.4.6/LICENSE
+
+PCRE2 10.44
+  License: BSD 3-Clause
+  Text: .work/deps/src/pcre2-10.44/LICENCE
+
+GLib 2.82.4
+  License: GNU Lesser General Public License, version 2.1 or later
+  Text: .work/deps/src/glib-2.82.4/LICENSES/LGPL-2.1-or-later.txt
+  Included GLib subprojects:
+    GVDB: .work/deps/src/glib-2.82.4/subprojects/gvdb/COPYING
+    proxy-libintl: .work/deps/src/glib-2.82.4/subprojects/proxy-libintl/COPYING
+
+Pixman 0.44.2
+  License: MIT
+  Text: .work/deps/src/pixman-0.44.2/COPYING
+
+This locator is not a complete binary dependency analysis or legal opinion.
+Consult each included source tree for additional copyright notices, licenses,
+and terms applicable to files or subcomponents actually incorporated into a
+specific build. Build-time-only components are not necessarily linked into
+the QEMU executables.
+NOTICES
 
 {
   echo "Emu Android QEMU corresponding-source bundle"
@@ -69,7 +108,8 @@ tar --exclude-vcs -C "$ROOT" -cf - \
   echo
   echo "This bundle includes upstream source trees, QEMU submodule source,"
   echo "repository Android patches, and the native build scripts."
-  echo "Build instructions and license files are included in the source trees."
+  echo "Build instructions, THIRD-PARTY-NOTICES.txt, and complete license texts"
+  echo "are included in the source trees."
   echo "The archive is provided as a source artifact associated with the CI build."
   echo "Review the applicable licenses and distribution obligations before"
   echo "redistributing binaries; this bundle is not legal advice."

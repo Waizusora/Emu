@@ -220,7 +220,18 @@ jobs:
             .work/qemu-build/${{ matrix.abi }}/qemu-system-aarch64
             .work/qemu-build/${{ matrix.abi }}/qemu-img
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
+
+      # Preserve unstripped QEMU object files and build metadata. Together with
+      # the corresponding source and static dependency sysroot, these are the
+      # inputs needed to investigate/relink the statically linked LGPL stack.
+      - name: Upload QEMU relink materials
+        uses: actions/upload-artifact@v4
+        with:
+          name: emu-qemu-9.2.0-relink-materials-${{ matrix.abi }}
+          path: .work/qemu-build/${{ matrix.abi }}/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Assemble QEMU corresponding-source bundle
         if: matrix.abi == 'arm64-v8a'
@@ -243,4 +254,4 @@ jobs:
           name: emu-native-sysroot-${{ matrix.abi }}
           path: .work/sysroots/${{ matrix.abi }}/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
