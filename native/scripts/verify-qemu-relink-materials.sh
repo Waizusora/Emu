@@ -46,6 +46,8 @@ if (( object_count < 1000 )); then
   exit 1
 fi
 
+# Retain the complete ABI sysroot for relinking. Not every archive must appear
+# as a direct argument: some static dependencies are consumed transitively.
 for library in \
   libffi.a \
   libgio-2.0.a \
@@ -54,6 +56,7 @@ for library in \
   libgobject-2.0.a \
   libintl.a \
   libpcre2-8.a \
+  libpixman-1.a \
   libz.so; do
   [[ -s "$SYSROOT_LIB/$library" ]] || {
     echo "ERROR: relink dependency is missing from ABI sysroot: $SYSROOT_LIB/$library" >&2
@@ -61,17 +64,12 @@ for library in \
   }
 done
 
-if [[ ! -s "$SYSROOT_LIB/libpixman-1.a" ]]; then
-  echo "ERROR: QEMU system emulator dependency is missing: $SYSROOT_LIB/libpixman-1.a" >&2
-  exit 1
-fi
-
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-# Ask Ninja for each target's own command graph. Searching the entire build.ninja
-# file can produce false positives because a library used by one target may be
-# mentioned elsewhere in the build graph but not linked into the other target.
+# Check each output's own Ninja command graph. Match both -lNAME and archive
+# filenames; linkers commonly receive a sysroot -L path plus -lNAME rather than
+# an absolute path to each archive. Only assert direct QEMU target dependencies.
 for target in qemu-system-aarch64 qemu-img; do
   if ! ninja -C "$BUILD_DIR" -t commands "$target" > "$tmp_dir/$target.commands"; then
     echo "ERROR: unable to extract Ninja commands for $target" >&2
@@ -79,27 +77,24 @@ for target in qemu-system-aarch64 qemu-img; do
   fi
 
   commands="$tmp_dir/$target.commands"
-  for library in \
-    libffi.a \
-    libgio-2.0.a \
-    libglib-2.0.a \
-    libgmodule-2.0.a \
-    libgobject-2.0.a \
-    libintl.a \
-    libpcre2-8.a \
-    libz.so; do
-    grep -Fq "$SYSROOT_LIB/$library" "$commands" || {
-      echo "ERROR: $target link commands do not reference $SYSROOT_LIB/$library" >&2
+  for library in glib-2.0 pcre2-8; do
+    if ! grep -Eq -- "(-l${library}([[:space:]]|$)|lib${library}\\.a([[:space:]]|$))" "$commands"; then
+      echo "ERROR: $target link command graph does not reference $library" >&2
       exit 1
-    }
+    fi
   done
 
-  if [[ "$target" == qemu-system-aarch64 ]]; then
-    grep -Fq "$SYSROOT_LIB/libpixman-1.a" "$commands" || {
-      echo "ERROR: $target link commands do not reference $SYSROOT_LIB/libpixman-1.a" >&2
+  if ! grep -Eq -- '(-lz([[:space:]]|$)|libz\.so([[:space:]]|$))' "$commands"; then
+    echo "ERROR: $target link command graph does not reference zlib" >&2
+    exit 1
+  fi
+
+  if [[ "$target" == "qemu-system-aarch64" ]]; then
+    if ! grep -Eq -- '(-lpixman-1([[:space:]]|$)|libpixman-1\.a([[:space:]]|$))' "$commands"; then
+      echo "ERROR: $target link command graph does not reference Pixman" >&2
       exit 1
-    }
-  elif grep -Fq "$SYSROOT_LIB/libpixman-1.a" "$commands"; then
+    fi
+  elif grep -Eq -- '(-lpixman-1([[:space:]]|$)|libpixman-1\.a([[:space:]]|$))' "$commands"; then
     echo "ERROR: qemu-img unexpectedly links Pixman; review the dependency manifest" >&2
     exit 1
   fi
@@ -109,4 +104,4 @@ echo "Verified QEMU relink materials for $ABI"
 echo "  object files: $object_count"
 echo "  build metadata: build.ninja, compile_commands.json, Meson coredata"
 echo "  target link commands: qemu-system-aarch64, qemu-img"
-echo "  dependency sysroot: $SYSROOT_LIB"
+echo "  complete ABI dependency sysroot: $SYSROOT_LIB"
