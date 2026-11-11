@@ -2,7 +2,7 @@
 # Verify APK JNI bridges, QEMU executables, ELF metadata, checksums, and notices.
 set -euo pipefail
 
-APK="\${1:-app/build/outputs/apk/debug/app-debug.apk}"
+APK="${1:-app/build/outputs/apk/debug/app-debug.apk}"
 
 if [[ ! -f "$APK" ]]; then
   echo "ERROR: APK not found: $APK" >&2
