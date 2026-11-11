@@ -133,6 +133,12 @@ private object MediaImporter {
         check(directory.exists() || directory.mkdirs()) {
             "Unable to create private " + directoryName + " directory"
         }
+        if (declaredSize != null && declaredSize > 0L) {
+            val availableBytes = StatFs(directory.absolutePath).availableBytes
+            check(declaredSize <= availableBytes) {
+                "Not enough free app-private storage for the selected document"
+            }
+        }
 
         val baseName = safeBaseName(sourceName)
         var destination = File(directory, baseName + "." + extension)
