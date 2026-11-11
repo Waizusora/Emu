@@ -39,3 +39,32 @@ for LICENSE_ASSET in \
 done
 
 echo "APK ABI and open-source notice packaging verification passed: $APK"
+
+# Confirm that the real QEMU executables, not only the JNI bridge, are packaged.
+python3 - "$APK" <<'PY'
+import struct
+import sys
+import zipfile
+
+apk = sys.argv[1]
+expected = {"arm64-v8a": 183, "x86_64": 62}
+with zipfile.ZipFile(apk) as archive:
+    names = set(archive.namelist())
+    for abi, machine in expected.items():
+        for executable in ("qemu-system-aarch64", "qemu-img"):
+            path = f"assets/qemu/{abi}/{executable}"
+            if path not in names:
+                raise SystemExit(f"ERROR: APK is missing {path}")
+            with archive.open(path) as stream:
+                header = stream.read(20)
+            if len(header) != 20 or header[:4] != b"\\x7fELF":
+                raise SystemExit(f"ERROR: invalid ELF header in {path}")
+            actual_machine = struct.unpack_from("<H", header, 18)[0]
+            if actual_machine != machine:
+                raise SystemExit(
+                    f"ERROR: {path} has ELF machine {actual_machine}, expected {machine}"
+                )
+            print(f"OK: {path} (ELF machine {machine})")
+PY
+
+echo "APK QEMU runtime packaging verification passed: $APK"

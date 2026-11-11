@@ -19,7 +19,6 @@ concurrency:
 jobs:
   detect-native-changes:
     # Detect native source changes without running expensive builds on every push.
-    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       native: ${{ steps.filter.outputs.native }}
@@ -49,6 +48,7 @@ jobs:
 
   build:
     name: Build Android debug APK and verify JNI ABIs
+    needs: [detect-native-changes, native-dependencies]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -91,6 +91,29 @@ jobs:
             echo "Checking ${script}"
             bash -n "${script}"
           done < <(find native/scripts -maxdepth 1 -type f -name '*.sh' -print0)
+
+      - name: Download QEMU runtime for arm64-v8a
+        uses: actions/download-artifact@v4
+        with:
+          name: emu-qemu-9.2.0-arm64-v8a
+          path: .work/qemu/arm64-v8a
+
+      - name: Download QEMU runtime for x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: emu-qemu-9.2.0-x86_64
+          path: .work/qemu/x86_64
+
+      - name: Stage ABI-specific QEMU runtime assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for abi in arm64-v8a x86_64; do
+            destination="app/src/main/assets/qemu/$abi"
+            mkdir -p "$destination"
+            install -m 0755 ".work/qemu/$abi/qemu-system-aarch64" "$destination/qemu-system-aarch64"
+            install -m 0755 ".work/qemu/$abi/qemu-img" "$destination/qemu-img"
+          done
 
       - name: Build debug APK for configured Android ABIs
         run: gradle --no-daemon --stacktrace :app:assembleDebug
@@ -136,7 +159,7 @@ jobs:
   native-dependencies:
     # Run manually or automatically when native build inputs change.
     needs: detect-native-changes
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.detect-native-changes.outputs.native == 'true') }}
+    if: ${{ always() }}
     name: Build native dependency sysroot (${{ matrix.abi }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
