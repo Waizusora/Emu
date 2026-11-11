@@ -65,24 +65,96 @@ for library in \
   }
 done
 
-tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
+# Ninja's command tool expands command variables but intentionally leaves
+# response-file contents opaque. Meson uses c_LINKER_RSP for large targets, so
+# the final "-o <target>" is in rspfile_content rather than the printed command.
+# Validate the exact Ninja edge, its linker rule, the response-file output
+# contract, and the last command in the target's dependency graph.
+python3 - "$BUILD_DIR" <<'PY'
+import pathlib
+import re
+import subprocess
+import sys
 
-# Ask Ninja for each final target's command graph and verify that it contains
-# the actual final-output link edge. Do not infer direct library linkage from
-# text searches: static/transitive dependencies can be represented by Meson
-# response files, linker groups, or intermediate target edges.
-for target in qemu-system-aarch64 qemu-img; do
-  if ! ninja -C "$BUILD_DIR" -t commands "$target" > "$tmp_dir/$target.commands"; then
-    echo "ERROR: unable to extract Ninja commands for $target" >&2
-    exit 1
-  fi
+build_dir = pathlib.Path(sys.argv[1])
+build_ninja = (build_dir / "build.ninja").read_text(encoding="utf-8")
+lines = build_ninja.splitlines()
 
-  if ! grep -Eq -- "-o[[:space:]=]+([^[:space:]]*/)?$target([[:space:]]|$)" "$tmp_dir/$target.commands"; then
-    echo "ERROR: Ninja command graph does not contain the final link output for $target" >&2
-    exit 1
-  fi
-done
+for target in ("qemu-system-aarch64", "qemu-img"):
+    edge_prefix = f"build {target}: "
+    edge_index = next(
+        (index for index, line in enumerate(lines) if line.startswith(edge_prefix)),
+        None,
+    )
+    if edge_index is None:
+        raise SystemExit(f"ERROR: build.ninja has no final build edge for {target}")
+
+    edge = lines[edge_index]
+    rule_name = edge[len(edge_prefix):].split()[0]
+    rule_header = f"rule {rule_name}"
+    rule_index = next(
+        (index for index, line in enumerate(lines) if line == rule_header),
+        None,
+    )
+    if rule_index is None:
+        raise SystemExit(f"ERROR: Ninja rule {rule_name} for {target} is missing")
+
+    rule_lines = []
+    for line in lines[rule_index + 1:]:
+        if not line or not line[0].isspace():
+            break
+        rule_lines.append(line.strip())
+
+    rule = {}
+    for line in rule_lines:
+        key, separator, value = line.partition(" = ")
+        if separator:
+            rule[key] = value
+
+    command_template = rule.get("command", "")
+    if not command_template or not re.search(r"(?:clang|ld\.lld)", command_template):
+        raise SystemExit(f"ERROR: {target} does not use a recognizable Android linker rule")
+
+    rsp_content = rule.get("rspfile_content")
+    if rsp_content is not None:
+        if "@$out.rsp" not in command_template:
+            raise SystemExit(f"ERROR: {target} response-file rule does not pass its output response file")
+        if not re.search(r"(?:^|\s)-o\s+\$out(?:\s|$)", rsp_content):
+            raise SystemExit(f"ERROR: {target} response-file template does not link to the declared output")
+        if "$in" not in rsp_content or "$LINK_ARGS" not in rsp_content:
+            raise SystemExit(f"ERROR: {target} response-file template omits objects or linker arguments")
+    else:
+        if not re.search(r"(?:^|\s)-o\s+\$out(?:\s|$)", command_template):
+            raise SystemExit(f"ERROR: {target} linker command does not emit the declared output")
+        if "$in" not in command_template or "$LINK_ARGS" not in command_template:
+            raise SystemExit(f"ERROR: {target} linker command omits objects or linker arguments")
+
+    if not any(line.startswith(" LINK_ARGS = ") for line in lines[edge_index + 1:edge_index + 5]):
+        raise SystemExit(f"ERROR: {target} final link edge has no retained LINK_ARGS metadata")
+
+    query = subprocess.run(
+        ["ninja", "-C", str(build_dir), "-t", "query", target],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    if not query.startswith(f"{target}:") or f"input: {rule_name}" not in query:
+        raise SystemExit(f"ERROR: Ninja query does not resolve {target} to its final linker edge")
+
+    commands = subprocess.run(
+        ["ninja", "-C", str(build_dir), "-t", "commands", target],
+        check=True, capture_output=True, text=True,
+    ).stdout.splitlines()
+    final_command = next((line for line in reversed(commands) if line.strip()), "")
+    if not final_command or "clang" not in final_command and "ld.lld" not in final_command:
+        raise SystemExit(f"ERROR: Ninja command graph has no final linker command for {target}")
+
+    if rsp_content is not None:
+        if f"@{target}.rsp" not in final_command:
+            raise SystemExit(f"ERROR: final linker command does not consume {target}.rsp")
+    elif not re.search(rf"(?:^|\s)-o\s+{re.escape(target)}(?:\s|$)", final_command):
+        raise SystemExit(f"ERROR: final linker command does not emit {target}")
+
+    print(f"Verified Ninja final link edge: {target} ({rule_name})")
+PY
 
 echo "Verified QEMU relink materials for $ABI"
 echo "  object files: $object_count"
