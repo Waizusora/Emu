@@ -18,7 +18,11 @@ import kotlinx.coroutines.withContext
  */
 object QemuRuntime {
     const val TARGET_VERSION = "9.2.0"
+    const val FIRMWARE_VERSION = "2026.08+ds-2"
+    private const val FIRMWARE_ASSET_PATH = "firmware/edk2-$FIRMWARE_VERSION"
+    private const val FIRMWARE_SIZE_BYTES = 64L * 1024L * 1024L
     private val executableNames = setOf("qemu-system-aarch64", "qemu-img")
+    private val firmwareNames = setOf("AAVMF_CODE.fd", "AAVMF_VARS.fd")
 
     data class RuntimeState(val available: Boolean, val status: String, val abi: String? = null)
 
@@ -42,13 +46,29 @@ object QemuRuntime {
 
             val checksums = readChecksums(appContext, abi)
             val systemBinary = installAsset(
-                appContext, abi, "qemu-system-aarch64", runtimeDirectory,
-                checksums.getValue("qemu-system-aarch64")
+                appContext, "qemu/$abi/qemu-system-aarch64", "qemu-system-aarch64", runtimeDirectory,
+                checksums.getValue("qemu-system-aarch64"), executable = true
             )
             val imageBinary = installAsset(
-                appContext, abi, "qemu-img", runtimeDirectory,
-                checksums.getValue("qemu-img")
+                appContext, "qemu/$abi/qemu-img", "qemu-img", runtimeDirectory,
+                checksums.getValue("qemu-img"), executable = true
             )
+            val firmwareChecksums = readFirmwareChecksums(appContext)
+            val firmwareDirectory = File(appContext.noBackupFilesDir, "firmware/edk2/$FIRMWARE_VERSION")
+            check(firmwareDirectory.exists() || firmwareDirectory.mkdirs()) {
+                "Unable to create the private UEFI firmware directory"
+            }
+            val firmwareCode = installAsset(
+                appContext, "$FIRMWARE_ASSET_PATH/AAVMF_CODE.fd", "AAVMF_CODE.fd", firmwareDirectory,
+                firmwareChecksums.getValue("AAVMF_CODE.fd"), executable = false
+            )
+            val firmwareVars = installAsset(
+                appContext, "$FIRMWARE_ASSET_PATH/AAVMF_VARS.fd", "AAVMF_VARS.fd", firmwareDirectory,
+                firmwareChecksums.getValue("AAVMF_VARS.fd"), executable = false
+            )
+            check(firmwareCode.length() == FIRMWARE_SIZE_BYTES && firmwareVars.length() == FIRMWARE_SIZE_BYTES) {
+                "AAVMF CODE and VARS firmware must both be exactly 64 MiB"
+            }
             verifyElfMachine(systemBinary, abi)
             verifyElfMachine(imageBinary, abi)
 
@@ -66,7 +86,7 @@ object QemuRuntime {
 
             RuntimeState(
                 available = true,
-                status = "QEMU $TARGET_VERSION ready · $abi · checksums, ELF and executable probes verified",
+                status = "QEMU $TARGET_VERSION + AAVMF $FIRMWARE_VERSION ready · $abi · checksums, ELF and executable probes verified",
                 abi = abi
             ).also { currentState = it }
         } catch (cancelled: CancellationException) {
@@ -84,6 +104,42 @@ object QemuRuntime {
 
     fun imageBinary(context: Context): File =
         File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-img")
+
+    /** Returns read-only firmware code and a per-VM writable copy of the UEFI variable store. */
+    fun firmwareArguments(context: Context): List<String> {
+        check(currentState.available) { "QEMU and AAVMF runtime have not passed initialization" }
+        val firmwareDirectory = File(context.noBackupFilesDir, "firmware/edk2/$FIRMWARE_VERSION")
+        val code = File(firmwareDirectory, "AAVMF_CODE.fd")
+        val template = File(firmwareDirectory, "AAVMF_VARS.fd")
+        check(code.isFile && template.isFile && code.length() == FIRMWARE_SIZE_BYTES && template.length() == FIRMWARE_SIZE_BYTES) {
+            "AAVMF firmware files are missing or have an unexpected size"
+        }
+        val vmDirectory = File(context.applicationContext.noBackupFilesDir, "vms/default")
+        check(vmDirectory.exists() || vmDirectory.mkdirs()) { "Unable to create the default VM directory" }
+        val vars = File(vmDirectory, "AAVMF_VARS.fd")
+        if (!vars.exists()) {
+            val temporary = File(vmDirectory, ".AAVMF_VARS-${System.nanoTime()}.tmp")
+            try {
+                FileInputStream(template).use { input ->
+                    FileOutputStream(temporary).use { output ->
+                        input.copyTo(output, 64 * 1024)
+                        output.fd.sync()
+                    }
+                }
+                check(temporary.length() == FIRMWARE_SIZE_BYTES) { "UEFI variable-store copy is incomplete" }
+                check(temporary.renameTo(vars)) { "Unable to publish the writable UEFI variable store" }
+            } finally {
+                if (temporary.exists()) temporary.delete()
+            }
+        }
+        check(vars.isFile && vars.length() == FIRMWARE_SIZE_BYTES) {
+            "The VM writable UEFI variable store is invalid"
+        }
+        return listOf(
+            "-drive", "if=pflash,format=raw,unit=0,readonly=on,file=${code.absolutePath}",
+            "-drive", "if=pflash,format=raw,unit=1,file=${vars.absolutePath}"
+        )
+    }
 
     /**
      * Creates a sparse QCOW2 image in app-private storage and verifies its format and
@@ -191,22 +247,41 @@ object QemuRuntime {
         return checksums
     }
 
+    private fun readFirmwareChecksums(context: Context): Map<String, String> {
+        val checksums = linkedMapOf<String, String>()
+        context.assets.open("$FIRMWARE_ASSET_PATH/SHA256SUMS").bufferedReader().useLines { lines ->
+            lines.forEach { line ->
+                val fields = line.trim().split(Regex("\\s+"), limit = 2)
+                check(fields.size == 2 && fields[0].matches(Regex("[0-9a-f]{64}"))) {
+                    "Invalid AAVMF checksum manifest entry"
+                }
+                val name = fields[1].removePrefix("*")
+                check(name in firmwareNames && checksums.put(name, fields[0]) == null) {
+                    "Invalid or duplicate AAVMF checksum entry: $name"
+                }
+            }
+        }
+        check(checksums.keys == firmwareNames) { "AAVMF checksum manifest is incomplete" }
+        return checksums
+    }
+
     private fun installAsset(
         context: Context,
-        abi: String,
+        assetPath: String,
         name: String,
         directory: File,
-        expectedSha256: String
+        expectedSha256: String,
+        executable: Boolean
     ): File {
         val destination = File(directory, name)
         val temporary = File(directory, "$name.tmp")
-        if (destination.isFile && destination.canExecute() && sha256(destination) == expectedSha256) {
+        if (destination.isFile && (!executable || destination.canExecute()) && sha256(destination) == expectedSha256) {
             return destination
         }
 
         try {
             val digest = MessageDigest.getInstance("SHA-256")
-            context.assets.open("qemu/$abi/$name").use { input ->
+            context.assets.open(assetPath).use { input ->
                 FileOutputStream(temporary).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
@@ -219,16 +294,16 @@ object QemuRuntime {
                 }
             }
             check(toHex(digest.digest()) == expectedSha256) {
-                "SHA-256 mismatch for $abi/$name"
+                "SHA-256 mismatch for $assetPath"
             }
-            check(temporary.setExecutable(true, true)) { "Unable to mark $name executable" }
+            if (executable) check(temporary.setExecutable(true, true)) { "Unable to mark $name executable" }
             if (destination.exists()) {
                 check(destination.delete()) { "Unable to replace the previous $name binary" }
             }
             check(temporary.renameTo(destination)) {
                 "Unable to install $name into app-private storage"
             }
-            check(destination.canExecute()) { "$name is not executable" }
+            if (executable) check(destination.canExecute()) { "$name is not executable" }
             return destination
         } finally {
             if (temporary.exists()) temporary.delete()

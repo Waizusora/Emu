@@ -127,8 +127,9 @@ class QemuSessionService : Service() {
                 "Executable qemu-system-aarch64 tidak tersedia di penyimpanan privat"
             }
 
+            val firmwareArguments = QemuRuntime.firmwareArguments(this@QemuSessionService)
             child = withContext(NonCancellable + Dispatchers.IO) {
-                ProcessBuilder(listOf(binary.absolutePath) + arguments)
+                ProcessBuilder(listOf(binary.absolutePath) + arguments + firmwareArguments)
                     .directory(binary.parentFile)
                     .redirectErrorStream(true)
                     .start()

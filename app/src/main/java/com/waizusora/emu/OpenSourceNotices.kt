@@ -38,8 +38,7 @@ private data class OpenSourceNotice(
 
 /**
  * Displays APK attributions and complete bundled license texts.
- * QEMU is described separately because CI builds it, but the current APK does
- * not contain the QEMU executables or their native dependency libraries.
+ * QEMU and AAVMF firmware are staged into the APK by the CI build.
  */
 @Composable
 internal fun OpenSourceNoticesScreen(onBack: () -> Unit) {
@@ -69,6 +68,13 @@ internal fun OpenSourceNoticesScreen(onBack: () -> Unit) {
                 copyright = "Copyright JetBrains s.r.o. and Kotlin Programming Language contributors.",
                 licenseName = "Apache License 2.0",
                 licenseAsset = "licenses/apache-2.0.txt"
+            ),
+            OpenSourceNotice(
+                name = "AAVMF / EDK II UEFI firmware",
+                summary = "AArch64 UEFI firmware for QEMU virt machines, packaged from Debian qemu-efi-aarch64 2026.08+ds-2.",
+                copyright = "Copyright the EDK II contributors and individual copyright holders listed in Debian’s package copyright file.",
+                licenseName = "Debian copyright and license notices (multiple components)",
+                licenseAsset = "licenses/edk2-aarch64-copyright.txt"
             )
         )
     }
@@ -133,7 +139,7 @@ internal fun OpenSourceNoticesScreen(onBack: () -> Unit) {
                     ) {
                         Text("QEMU 9.2.0", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "QEMU is the planned full-system machine emulator for running AArch64 Linux guests. CI currently builds qemu-system-aarch64 and qemu-img for arm64-v8a and x86_64 as separate artifacts, but those binaries are not included in this APK. QEMU is licensed under GPL-2.0; its license, corresponding source, and notices for incorporated dependencies must be shipped when the engine is packaged.",
+                            "QEMU is the full-system machine emulator for AArch64 Linux guests. CI stages qemu-system-aarch64 and qemu-img for arm64-v8a and x86_64 into this APK; the runtime copies them into app-private storage and verifies their SHA-256 checksums and ELF architecture before execution. QEMU is licensed under GPL-2.0; its license, corresponding source, and notices for incorporated dependencies must accompany distributed builds.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text("Not included in this APK", style = MaterialTheme.typography.labelLarge)
