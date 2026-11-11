@@ -172,11 +172,46 @@ jobs:
       - name: Stage pinned AAVMF AArch64 UEFI firmware
         run: bash tools/stage-aavmf-firmware.sh
 
+      - name: Download SDL2 static library for arm64-v8a
+        uses: actions/download-artifact@v4
+        with:
+          name: emu-sdl2-2.30.12-arm64-v8a
+          path: .work/sdl2/arm64-v8a
+
+      - name: Download SDL2 static library for x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: emu-sdl2-2.30.12-x86_64
+          path: .work/sdl2/x86_64
+
+      - name: Verify staged SDL2 libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for abi in arm64-v8a x86_64; do
+            test -s ".work/sdl2/$abi/usr/lib/libSDL2.a"
+            test -s ".work/sdl2/$abi/usr/include/SDL2/SDL.h"
+          done
+
       - name: Build debug APK for configured Android ABIs
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Verify APK contains JNI libraries for both ABIs
         run: bash native/scripts/verify-android-apk.sh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify SDL2 is linked into both Android JNI libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          for abi in arm64-v8a x86_64; do
+            message="$(unzip -p "$apk" "lib/$abi/libemu-qemu.so" | strings | grep -F "SDL2 2.30.12 is linked" || true)"
+            if [[ -z "$message" ]]; then
+              echo "ERROR: SDL2 link marker missing from $abi JNI library" >&2
+              exit 1
+            fi
+            echo "Verified SDL2 linkage marker in $abi JNI library"
+          done
 
       - name: Verify adaptive launcher icon resources
         shell: bash
