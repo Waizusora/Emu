@@ -142,7 +142,7 @@ internal fun OpenSourceNoticesScreen(onBack: () -> Unit) {
                             "QEMU is the full-system machine emulator for AArch64 Linux guests. CI stages qemu-system-aarch64 and qemu-img for arm64-v8a and x86_64 into this APK; the runtime copies them into app-private storage and verifies their SHA-256 checksums and ELF architecture before execution. QEMU is licensed under GPL-2.0; its license, corresponding source, and notices for incorporated dependencies must accompany distributed builds.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text("Not included in this APK", style = MaterialTheme.typography.labelLarge)
+                        Text("Included in this APK", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }

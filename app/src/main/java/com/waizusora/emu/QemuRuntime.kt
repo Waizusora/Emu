@@ -106,7 +106,7 @@ object QemuRuntime {
         File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-img")
 
     /** Returns read-only firmware code and a per-VM writable copy of the UEFI variable store. */
-    fun firmwareArguments(context: Context): List<String> {
+    suspend fun firmwareArguments(context: Context): List<String> = withContext(Dispatchers.IO) {
         check(currentState.available) { "QEMU and AAVMF runtime have not passed initialization" }
         val firmwareDirectory = File(context.noBackupFilesDir, "firmware/edk2/$FIRMWARE_VERSION")
         val code = File(firmwareDirectory, "AAVMF_CODE.fd")
@@ -135,7 +135,7 @@ object QemuRuntime {
         check(vars.isFile && vars.length() == FIRMWARE_SIZE_BYTES) {
             "The VM writable UEFI variable store is invalid"
         }
-        return listOf(
+        listOf(
             "-drive", "if=pflash,format=raw,unit=0,readonly=on,file=${code.absolutePath}",
             "-drive", "if=pflash,format=raw,unit=1,file=${vars.absolutePath}"
         )
