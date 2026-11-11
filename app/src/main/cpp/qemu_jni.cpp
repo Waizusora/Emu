@@ -1,9 +1,10 @@
 #include <jni.h>
+#include <SDL.h>
+
+#include <cstdio>
 
 namespace {
 constexpr char kQemuVersion[] = "9.2.0";
-constexpr char kRuntimeState[] =
-    "QEMU 9.2.0 runtime is not packaged in this build";
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -22,5 +23,12 @@ Java_com_waizusora_emu_QemuRuntime_nativeIsAvailable(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_waizusora_emu_QemuRuntime_nativeGetStatus(
     JNIEnv* env, jobject /* thiz */) {
-    return env->NewStringUTF(kRuntimeState);
+    SDL_version version{};
+    SDL_GetVersion(&version);
+    char status[128]{};
+    std::snprintf(
+        status, sizeof(status),
+        "QEMU %s runtime is not packaged; SDL2 %u.%u.%u is linked",
+        kQemuVersion, version.major, version.minor, version.patch);
+    return env->NewStringUTF(status);
 }
