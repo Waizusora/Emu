@@ -226,5 +226,16 @@ for binary in "$BUILD_DIR/qemu-system-aarch64" "$BUILD_DIR/qemu-img"; do
   echo "Verified Android $ABI ELF: $binary ($actual_machine)"
 done
 
+# Remove debug information and non-runtime symbols before publishing binaries.
+# Keep the dynamic symbol table required by Android's linker intact.
+for binary in "$BUILD_DIR/qemu-system-aarch64" "$BUILD_DIR/qemu-img"; do
+  "$STRIP" --strip-unneeded "$binary"
+  [[ -s "$binary" ]] || {
+    echo "ERROR: stripping produced an empty executable: $binary" >&2
+    exit 1
+  }
+  echo "Stripped Android $ABI executable: $binary"
+done
+
 echo "QEMU binaries built under: $BUILD_DIR"
 echo "Next: inspect ELF dependencies and run device-level smoke tests before packaging."
