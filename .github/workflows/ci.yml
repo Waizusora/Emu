@@ -248,6 +248,15 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+
+      # Validate the retained object files, Meson/Ninja metadata, and matching
+      # ABI-specific dependency archives before the artifacts are published.
+      - name: Verify QEMU relink materials
+        env:
+          QEMU_BUILD_ROOT: ${{ github.workspace }}/.work/qemu-build
+          QEMU_ANDROID_SYSROOT: ${{ github.workspace }}/.work/sysroots/${{ matrix.abi }}
+        run: bash native/scripts/verify-qemu-relink-materials.sh "${{ matrix.abi }}"
+
       - name: Upload Android dependency sysroot
         uses: actions/upload-artifact@v4
         with:

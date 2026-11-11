@@ -252,6 +252,27 @@ must satisfy the applicable GPL source, notice, and corresponding-source
 requirements. Keep upstream QEMU and dependency license texts with the
 distributed application. The app's MIT license does not relicense QEMU.
 
+## Preserve and verify QEMU relink materials
+
+CI publishes the ABI-specific QEMU build directory separately from the
+matching dependency sysroot and corresponding-source archive. The build
+directory retains QEMU object files, `build.ninja`, compile commands, and
+Meson configuration metadata. The sysroot retains the static dependency
+archives and shared zlib library referenced by the generated link metadata.
+
+Before upload, CI runs:
+
+```sh
+bash native/scripts/verify-qemu-relink-materials.sh arm64-v8a
+bash native/scripts/verify-qemu-relink-materials.sh x86_64
+```
+
+This verifies that the expected inputs are present and referenced by the
+link metadata. It does not prove that a relink has been completed, that the
+result is byte-for-byte reproducible, or that every applicable license
+obligation has been satisfied. Keep the build, sysroot, and corresponding
+source artifacts from the same CI run together.
+
 ## Build the first Android dependency (zlib)
 
 The dependency pipeline starts with a pinned static zlib build. The script
