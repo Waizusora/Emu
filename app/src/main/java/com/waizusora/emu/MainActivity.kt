@@ -436,12 +436,14 @@ private fun EmuApp() {
             when (AppTab.entries[selectedTab]) {
                 AppTab.Home -> HomeScreen(
                     hasMedia = selectedIso != null || selectedDisk != null,
+                    selectedIsoName = selectedIso?.lastPathSegment,
+                    selectedDiskName = selectedDisk?.lastPathSegment,
                     notice = notice,
                     runtimeStatus = runtimeStatus,
                     runtimeAvailable = runtimeAvailable,
                     runtimeInitialized = runtimeInitialized,
                     session = qemuSession,
-                    onStartSession = { QemuSessionService.startPausedProcess(context) },
+                    onStartSession = { QemuSessionService.startProcess(context, selectedIso?.path, selectedDisk?.path) },
                     onStopSession = { QemuSessionService.stopProcess(context) },
                     mediaImportBusy = mediaImportBusy,
                     onChooseIso = { if (!mediaImportBusy) isoPicker.launch(arrayOf("application/x-iso9660-image", "*/*")) },
@@ -505,6 +507,8 @@ private fun EmuApp() {
 @Composable
 private fun HomeScreen(
     hasMedia: Boolean,
+    selectedIsoName: String?,
+    selectedDiskName: String?,
     notice: String,
     runtimeStatus: String,
     runtimeAvailable: Boolean,
@@ -530,7 +534,9 @@ private fun HomeScreen(
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Virtual machines", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text("No virtual machines yet", style = MaterialTheme.typography.titleMedium)
-                    Text("Select installation media and a virtual disk to prepare a guest system.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Select an installation ISO, a QCOW2 disk, or both to start a guest boot.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("ISO: " + (selectedIsoName ?: "not selected"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Text("Disk: " + (selectedDiskName ?: "not selected"), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     Button(
                         onClick = onChooseIso,
                         enabled = !mediaImportBusy,
@@ -580,9 +586,9 @@ private fun HomeScreen(
                     when (session.phase) {
                         QemuSessionPhase.STOPPED, QemuSessionPhase.FAILED -> Button(
                             onClick = onStartSession,
-                            enabled = runtimeInitialized && runtimeAvailable,
+                            enabled = runtimeInitialized && runtimeAvailable && hasMedia,
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text(if (session.phase == QemuSessionPhase.FAILED) "Retry QEMU process" else "Start QEMU paused (no guest)") }
+                        ) { Text(if (session.phase == QemuSessionPhase.FAILED) "Retry guest boot" else "Start guest") }
                         QemuSessionPhase.RUNNING -> OutlinedButton(
                             onClick = onStopSession,
                             modifier = Modifier.fillMaxWidth()
@@ -591,7 +597,7 @@ private fun HomeScreen(
                         QemuSessionPhase.STOPPING -> Text("Stopping QEMU…")
                     }
                     Text(
-                        "This lifecycle check starts QEMU with its virtual CPU paused and no guest media. It does not boot Linux.",
+                        "QEMU attaches selected media and attempts UEFI boot. A running QEMU process does not prove that Linux has booted; display and interactive console support are separate stages.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall
                     )
