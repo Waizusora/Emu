@@ -57,7 +57,7 @@ with zipfile.ZipFile(apk) as archive:
                 raise SystemExit(f"ERROR: APK is missing {path}")
             with archive.open(path) as stream:
                 header = stream.read(20)
-            if len(header) != 20 or header[:4] != b"\\x7fELF":
+            if len(header) != 20 or header[:4] != bytes([0x7f]) + b"ELF":
                 raise SystemExit(f"ERROR: invalid ELF header in {path}")
             actual_machine = struct.unpack_from("<H", header, 18)[0]
             if actual_machine != machine:
