@@ -24,21 +24,37 @@ for required in "${CODE_SOURCE}" "${VARS_SOURCE}" "${COPYRIGHT_SOURCE}" "${READM
   if [[ ! -s "${required}" ]]; then
     echo "Missing or empty AAVMF package file: ${required}" >&2
     echo "Extracted AAVMF files:" >&2
-    find "${WORK_DIR}/root/usr/share" -maxdepth 3 -type f -printf '%p (%s bytes)\\n' >&2
+    find -L "${WORK_DIR}/root/usr/share" -maxdepth 3 -type f -printf "%p (%s bytes)\\n" >&2
     exit 1
   fi
 done
 
+# Debian may ship AAVMF_CODE.fd as a symlink to the actual firmware image.
+# Resolve it before checking its size and copying it into the APK assets.
+readonly CODE_IMAGE_SOURCE=$(readlink -f "${CODE_SOURCE}")
+readonly AAVMF_DIRECTORY=$(readlink -f "${WORK_DIR}/root/usr/share/AAVMF")
+case "${CODE_IMAGE_SOURCE}" in
+  "${AAVMF_DIRECTORY}"/*) ;;
+  *)
+    echo "AAVMF_CODE.fd resolves outside the extracted AAVMF directory: ${CODE_IMAGE_SOURCE}" >&2
+    exit 1
+    ;;
+esac
+if [[ ! -f "${CODE_IMAGE_SOURCE}" ]]; then
+  echo "Resolved AAVMF_CODE.fd target is not a regular file: ${CODE_IMAGE_SOURCE}" >&2
+  exit 1
+fi
+
 readonly EXPECTED_FIRMWARE_SIZE=$((64 * 1024 * 1024))
-readonly CODE_SIZE=$(stat -c %s "${CODE_SOURCE}")
+readonly CODE_SIZE=$(stat -c %s "${CODE_IMAGE_SOURCE}")
 readonly VARS_SIZE=$(stat -c %s "${VARS_SOURCE}")
-echo "AAVMF_CODE.fd source size: ${CODE_SIZE} bytes; AAVMF_VARS.fd source size: ${VARS_SIZE} bytes"
+echo "AAVMF_CODE.fd image size: ${CODE_SIZE} bytes; AAVMF_VARS.fd source size: ${VARS_SIZE} bytes"
 if [[ "${CODE_SIZE}" != "${EXPECTED_FIRMWARE_SIZE}" || "${VARS_SIZE}" != "${EXPECTED_FIRMWARE_SIZE}" ]]; then
   echo "AAVMF firmware size mismatch: expected ${EXPECTED_FIRMWARE_SIZE} bytes for each image" >&2
   exit 1
 fi
 
-install -m 0644 "${CODE_SOURCE}" "${DESTINATION}/AAVMF_CODE.fd"
+install -m 0644 "${CODE_IMAGE_SOURCE}" "${DESTINATION}/AAVMF_CODE.fd"
 install -m 0644 "${VARS_SOURCE}" "${DESTINATION}/AAVMF_VARS.fd"
 install -m 0644 "${README_SOURCE}" "${DESTINATION}/README.Debian"
 install -m 0644 "${COPYRIGHT_SOURCE}" app/src/main/assets/licenses/edk2-aarch64-copyright.txt
