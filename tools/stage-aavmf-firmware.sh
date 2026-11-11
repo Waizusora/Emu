@@ -21,12 +21,22 @@ readonly VARS_SOURCE=${WORK_DIR}/root/usr/share/AAVMF/AAVMF_VARS.fd
 readonly COPYRIGHT_SOURCE=${WORK_DIR}/root/usr/share/doc/qemu-efi-aarch64/copyright
 readonly README_SOURCE=${WORK_DIR}/root/usr/share/doc/qemu-efi-aarch64/README.Debian
 for required in "${CODE_SOURCE}" "${VARS_SOURCE}" "${COPYRIGHT_SOURCE}" "${README_SOURCE}"; do
-  [[ -s "${required}" ]] || { echo "Missing required AAVMF package file: ${required}" >&2; exit 1; }
+  if [[ ! -s "${required}" ]]; then
+    echo "Missing or empty AAVMF package file: ${required}" >&2
+    echo "Extracted AAVMF files:" >&2
+    find "${WORK_DIR}/root/usr/share" -maxdepth 3 -type f -printf '%p (%s bytes)\\n' >&2
+    exit 1
+  fi
 done
 
 readonly EXPECTED_FIRMWARE_SIZE=$((64 * 1024 * 1024))
-[[ $(stat -c %s "${CODE_SOURCE}") == ${EXPECTED_FIRMWARE_SIZE} ]]
-[[ $(stat -c %s "${VARS_SOURCE}") == ${EXPECTED_FIRMWARE_SIZE} ]]
+readonly CODE_SIZE=$(stat -c %s "${CODE_SOURCE}")
+readonly VARS_SIZE=$(stat -c %s "${VARS_SOURCE}")
+echo "AAVMF_CODE.fd source size: ${CODE_SIZE} bytes; AAVMF_VARS.fd source size: ${VARS_SIZE} bytes"
+if [[ "${CODE_SIZE}" != "${EXPECTED_FIRMWARE_SIZE}" || "${VARS_SIZE}" != "${EXPECTED_FIRMWARE_SIZE}" ]]; then
+  echo "AAVMF firmware size mismatch: expected ${EXPECTED_FIRMWARE_SIZE} bytes for each image" >&2
+  exit 1
+fi
 
 install -m 0644 "${CODE_SOURCE}" "${DESTINATION}/AAVMF_CODE.fd"
 install -m 0644 "${VARS_SOURCE}" "${DESTINATION}/AAVMF_VARS.fd"
