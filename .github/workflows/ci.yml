@@ -211,6 +211,12 @@ jobs:
               exit 1
             fi
             echo "Verified SDL2 linkage marker in $abi JNI library"
+            audio_marker="$(unzip -p "$apk" "lib/$abi/libemu-qemu.so" | strings | grep -F "SDL_AUDIODRIVER" || true)"
+            if [[ -z "$audio_marker" ]]; then
+              echo "ERROR: explicit SDL audio-driver selection missing from $abi JNI library" >&2
+              exit 1
+            fi
+            echo "Verified explicit SDL audio-driver selection in $abi JNI library"
           done
 
       - name: Verify adaptive launcher icon resources
