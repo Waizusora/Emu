@@ -53,13 +53,13 @@ object QemuRuntime {
 
             val systemVersion = runProbe(systemBinary, "--version")
             check(systemVersion.contains(TARGET_VERSION)) {
-                "Unexpected qemu-system-aarch64 version: \${systemVersion.lineSequence().firstOrNull().orEmpty()}"
+                "Unexpected qemu-system-aarch64 version: ${systemVersion.lineSequence().firstOrNull().orEmpty()}"
             }
             runProbe(systemBinary, "--help")
 
             val imageVersion = runProbe(imageBinary, "--version")
             check(imageVersion.contains(TARGET_VERSION)) {
-                "Unexpected qemu-img version: \${imageVersion.lineSequence().firstOrNull().orEmpty()}"
+                "Unexpected qemu-img version: ${imageVersion.lineSequence().firstOrNull().orEmpty()}"
             }
             runProbe(imageBinary, "--help")
 
@@ -73,16 +73,16 @@ object QemuRuntime {
         } catch (error: Exception) {
             RuntimeState(
                 available = false,
-                status = "QEMU runtime unavailable: \${error.message ?: error.javaClass.simpleName}"
+                status = "QEMU runtime unavailable: ${error.message ?: error.javaClass.simpleName}"
             ).also { currentState = it }
         }
     }
 
     fun systemBinary(context: Context): File =
-        File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/\${currentAbi()}/qemu-system-aarch64")
+        File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-system-aarch64")
 
     fun imageBinary(context: Context): File =
-        File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/\${currentAbi()}/qemu-img")
+        File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-img")
 
     private fun currentAbi(): String =
         Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
@@ -173,7 +173,7 @@ object QemuRuntime {
             var offset = 0
             while (offset < header.size) {
                 val count = input.read(header, offset, header.size - offset)
-                check(count > 0) { "Truncated ELF header: \${binary.name}" }
+                check(count > 0) { "Truncated ELF header: ${binary.name}" }
                 offset += count
             }
             check(
@@ -181,17 +181,17 @@ object QemuRuntime {
                     header[1] == 'E'.code.toByte() &&
                     header[2] == 'L'.code.toByte() &&
                     header[3] == 'F'.code.toByte()
-            ) { "Invalid ELF executable: \${binary.name}" }
+            ) { "Invalid ELF executable: ${binary.name}" }
             check(header[4] == 2.toByte() && header[5] == 1.toByte()) {
-                "Expected a 64-bit little-endian ELF executable: \${binary.name}"
+                "Expected a 64-bit little-endian ELF executable: ${binary.name}"
             }
             val elfType = (header[16].toInt() and 0xff) or ((header[17].toInt() and 0xff) shl 8)
-            check(elfType == 3) { "Expected a position-independent executable: \${binary.name}" }
+            check(elfType == 3) { "Expected a position-independent executable: ${binary.name}" }
 
             val machine = (header[18].toInt() and 0xff) or ((header[19].toInt() and 0xff) shl 8)
             val expectedMachine = if (abi == "arm64-v8a") 183 else 62
             check(machine == expectedMachine) {
-                "ELF architecture mismatch for $abi in \${binary.name}"
+                "ELF architecture mismatch for $abi in ${binary.name}"
             }
         }
     }
@@ -200,19 +200,20 @@ object QemuRuntime {
         val output = File.createTempFile("qemu-probe-", ".txt", binary.parentFile)
         var process: Process? = null
         try {
-            process = ProcessBuilder(binary.absolutePath, argument)
+            val startedProcess = ProcessBuilder(binary.absolutePath, argument)
                 .directory(binary.parentFile)
                 .redirectErrorStream(true)
                 .redirectOutput(output)
                 .start()
-            if (!process.waitFor(12, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                process.waitFor(2, TimeUnit.SECONDS)
-                error("\${binary.name} $argument timed out")
+            process = startedProcess
+            if (!startedProcess.waitFor(12, TimeUnit.SECONDS)) {
+                startedProcess.destroyForcibly()
+                startedProcess.waitFor(2, TimeUnit.SECONDS)
+                error("${binary.name} $argument timed out")
             }
             val text = output.readText()
-            check(process.exitValue() == 0) {
-                "\${binary.name} $argument failed (\${process.exitValue()}): \${text.take(500)}"
+            check(startedProcess.exitValue() == 0) {
+                "${binary.name} $argument failed (${startedProcess.exitValue()}): ${text.take(500)}"
             }
             return text
         } finally {
