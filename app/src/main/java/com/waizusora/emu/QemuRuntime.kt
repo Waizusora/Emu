@@ -6,6 +6,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +84,89 @@ object QemuRuntime {
 
     fun imageBinary(context: Context): File =
         File(context.noBackupFilesDir, "qemu/$TARGET_VERSION/${currentAbi()}/qemu-img")
+
+    /**
+     * Creates a sparse QCOW2 image in app-private storage and verifies its format and
+     * virtual capacity with qemu-img info before publishing the final filename.
+     */
+    suspend fun createDiskImage(context: Context, requestedName: String, sizeGb: Long): File =
+        withContext(Dispatchers.IO) {
+            check(currentState.available) { "QEMU runtime has not passed its executable probes" }
+            check(sizeGb in 1L..2048L) { "Disk capacity must be between 1 and 2048 GB" }
+            val name = requestedName.trim()
+            check(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,47}").matches(name)) {
+                "Disk name may contain only letters, numbers, dot, underscore and hyphen"
+            }
+
+            val directory = File(context.applicationContext.noBackupFilesDir, "disks")
+            check(directory.exists() || directory.mkdirs()) {
+                "Unable to create the private virtual-disk directory"
+            }
+            val destination = File(directory, "$name.qcow2")
+            check(!destination.exists()) { "A disk named $name.qcow2 already exists" }
+            val temporary = File(directory, ".$name-${System.nanoTime()}.qcow2.tmp")
+            val binary = imageBinary(context)
+            check(binary.isFile && binary.canExecute()) {
+                "qemu-img is not executable in app-private storage"
+            }
+
+            try {
+                runImageTool(binary, listOf("create", "-f", "qcow2", "-o", "compat=1.1", temporary.absolutePath, "${sizeGb}G"), 120)
+                check(temporary.isFile && temporary.length() > 0L) {
+                    "qemu-img did not create a disk image"
+                }
+
+                val info = runImageTool(binary, listOf("info", "--output=json", temporary.absolutePath), 30)
+                val metadata = JSONObject(info)
+                check(metadata.optString("format") == "qcow2") {
+                    "qemu-img produced an image that is not QCOW2"
+                }
+                val expectedBytes = Math.multiplyExact(sizeGb, 1024L * 1024L * 1024L)
+                check(metadata.optLong("virtual-size", -1L) == expectedBytes) {
+                    "QCOW2 virtual capacity does not match the requested size"
+                }
+                check(temporary.renameTo(destination)) {
+                    "Unable to publish the verified QCOW2 image"
+                }
+                destination
+            } finally {
+                if (temporary.exists()) temporary.delete()
+            }
+        }
+
+    private fun runImageTool(binary: File, arguments: List<String>, timeoutSeconds: Long): String {
+        val output = File.createTempFile("qemu-img-", ".log", binary.parentFile)
+        var process: Process? = null
+        try {
+            val started = ProcessBuilder(listOf(binary.absolutePath) + arguments)
+                .directory(binary.parentFile)
+                .redirectErrorStream(true)
+                .redirectOutput(output)
+                .start()
+            process = started
+            if (!started.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+                started.destroy()
+                if (!started.waitFor(2, TimeUnit.SECONDS)) {
+                    started.destroyForcibly()
+                    started.waitFor(2, TimeUnit.SECONDS)
+                }
+                error("qemu-img timed out after $timeoutSeconds seconds")
+            }
+            val result = output.readText()
+            check(started.exitValue() == 0) {
+                "qemu-img failed (exit ${started.exitValue()}): ${result.take(1200)}"
+            }
+            return result
+        } finally {
+            process?.let {
+                if (it.isAlive) {
+                    it.destroyForcibly()
+                    it.waitFor(2, TimeUnit.SECONDS)
+                }
+            }
+            output.delete()
+        }
+    }
 
     private fun currentAbi(): String =
         Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
