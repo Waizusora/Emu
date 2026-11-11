@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
  * Executables are checksum-verified and copied to app-private storage before execution.
  */
 object QemuRuntime {
-    const val TARGET_VERSION = "9.2.0"
+    init {\n        System.loadLibrary("emu-qemu")\n    }\n\n    private external fun nativePrepareAudio(): Boolean\n    private external fun nativeGetStatus(): String\n\n    const val TARGET_VERSION = "9.2.0"
     const val FIRMWARE_VERSION = "2026.08+ds-2"
     private const val FIRMWARE_ASSET_PATH = "firmware/edk2-$FIRMWARE_VERSION"
     private const val FIRMWARE_SIZE_BYTES = 64L * 1024L * 1024L
@@ -34,7 +34,7 @@ object QemuRuntime {
 
     suspend fun initialize(context: Context): RuntimeState = withContext(Dispatchers.IO) {
         try {
-            val appContext = context.applicationContext
+            check(nativePrepareAudio()) {\n                "SDL2 could not select the Android AAudio backend"\n            }\n            val sdlStatus = nativeGetStatus()\n            check(sdlStatus.contains("AAudio backend compiled")) {\n                "SDL2 was linked without its AAudio backend: $sdlStatus"\n            }\n\n            val appContext = context.applicationContext
             val abi = Build.SUPPORTED_ABIS.firstOrNull {
                 it == "arm64-v8a" || it == "x86_64"
             } ?: error("This device ABI is not supported by the bundled QEMU runtime")
@@ -86,7 +86,7 @@ object QemuRuntime {
 
             RuntimeState(
                 available = true,
-                status = "QEMU $TARGET_VERSION + AAVMF $FIRMWARE_VERSION ready · $abi · checksums, ELF and executable probes verified",
+                status = "QEMU $TARGET_VERSION + AAVMF $FIRMWARE_VERSION ready · $abi · checksums, ELF and executable probes verified · $sdlStatus · AAudio selected for the next SDL audio initialization",
                 abi = abi
             ).also { currentState = it }
         } catch (cancelled: CancellationException) {
