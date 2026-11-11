@@ -2,9 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   # Manual runs also execute the native dependency matrix.
   workflow_dispatch:
 
@@ -59,7 +59,7 @@ jobs:
               echo "Reusable QEMU ABI artifacts found in workflow run $candidate"
               break
             fi
-          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=30" --jq '.workflow_runs[].id')
+          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=30" --jq '.workflow_runs[].id')
           echo "reusable=$reusable" >> "$GITHUB_OUTPUT"
           if [[ "$reusable" != true ]]; then
             echo "No retained QEMU ABI artifacts found; native dependency build will run."
@@ -124,7 +124,7 @@ jobs:
             exit 0
           fi
 
-          # Reuse the latest successful main-branch native build for app-only changes.
+          # Reuse the latest successful dev-branch native build for app-only changes.
           while IFS= read -r candidate; do
             [[ -z "$candidate" || "$candidate" == "$GITHUB_RUN_ID" ]] && continue
             artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate/artifacts" --jq '[.artifacts[] | select(.expired == false) | .name]')"
@@ -133,7 +133,7 @@ jobs:
               echo "Reusing QEMU runtime artifacts from workflow run $candidate"
               exit 0
             fi
-          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=30" --jq '.workflow_runs[].id')
+          done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=30" --jq '.workflow_runs[].id')
 
           echo "ERROR: no unexpired successful QEMU ABI artifacts were found; run Android CI manually to rebuild them." >&2
           exit 1
