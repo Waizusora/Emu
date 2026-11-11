@@ -201,7 +201,10 @@ class QemuSessionService : Service() {
                     }
                 }
             }
-            withContext(NonCancellable) { outputJob?.cancelAndJoin() }
+            withContext(NonCancellable) {
+                outputJob?.cancelAndJoin()
+                persistOutputTail(outputTail)
+            }
             process = null
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
