@@ -23,10 +23,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
 enum class QemuSessionPhase { STOPPED, STARTING, RUNNING, STOPPING, FAILED }
@@ -129,7 +127,7 @@ class QemuSessionService : Service() {
                 "Executable qemu-system-aarch64 tidak tersedia di penyimpanan privat"
             }
 
-            child = withContext(Dispatchers.IO) {
+            child = withContext(NonCancellable + Dispatchers.IO) {
                 ProcessBuilder(listOf(binary.absolutePath) + arguments)
                     .directory(binary.parentFile)
                     .redirectErrorStream(true)
